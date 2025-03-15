@@ -2,7 +2,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { Note } from './modules/notes/notes.entity';
 import { Tag } from './modules/tags/tags.entity';
 import { config } from 'dotenv';
-
+import { User } from './modules/users/user.entity';
 config();
 
 export const dataSourceOptions: DataSourceOptions = {
@@ -13,7 +13,7 @@ export const dataSourceOptions: DataSourceOptions = {
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'password',
   database: process.env.DB_NAME || 'ai_notes',
-  entities: [Note, Tag],
+  entities: [Note, Tag, User],
   migrations: ['src/migrations/*.ts'],
   synchronize: false,
   logging: true,

@@ -1,5 +1,6 @@
-import { Column, Entity, ManyToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from "typeorm";
+import { Column, Entity, ManyToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from "typeorm";
 import { Tag } from "../tags/tags.entity";
+import { User } from "../users/user.entity";
 
 @Entity('notes') 
 export class Note {
@@ -26,4 +27,8 @@ export class Note {
 
   @ManyToMany(() => Tag, (tag) => tag.notes)
   tags: Tag[];
+
+  @ManyToOne(() => User, (user) => user.notes)
+  @JoinColumn({ name: 'userId' })
+  user: User;
 }

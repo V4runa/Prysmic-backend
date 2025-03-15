@@ -14,29 +14,35 @@ export class NotesController {
   // Create a new note
   @Post()
   async createNote(
+    @Body('userId') userId: number, 
     @Body('title') title: string,
     @Body('content') content: string,
     @Body('tagIds') tagIds: number[],
   ): Promise<Note> {
+    // Fetch the tags
     const tags = await this.tagsService.getAllTags();
     const noteTags = tags.filter((tag) => tagIds.includes(tag.id));
+    
+    // Check if all tags exist
     if (noteTags.length !== tagIds.length) {
       throw new Error('Some of the provided tag IDs do not exist');
     }
-    return this.notesService.createNote(title, content, noteTags);
+    
+    // Create the note for the user
+    return this.notesService.createNote(title, content, noteTags, userId);
   }
-  
-  // Get all notes
-  @Get()
-  async getAllNotes(): Promise<Note[]> {
-    return this.notesService.getAllNotes();
-  } 
+
+  // Get all notes for a user
+  @Get('user/:userId')
+  async getNotesByUser(@Param('userId') userId: number): Promise<Note[]> {
+    return this.notesService.getNotesByUser(userId);
+  }
 
   // Get a single note by ID
   @Get(':id')
   async getNoteById(@Param('id') id: number): Promise<Note> {
     return this.notesService.getNoteById(id);
-  }       
+  }
 
   // Update a note
   @Put(':id')
@@ -45,12 +51,16 @@ export class NotesController {
     @Body() noteData: Partial<Note>,
     @Body('tagIds') tagIds: number[],
   ): Promise<Note> {
+    // Fetch the tags
     const tags = await this.tagsService.getAllTags();
     const noteTags = tags.filter((tag) => tagIds.includes(tag.id));
+    
+    // Check if all tags exist
     if (noteTags.length !== tagIds.length) {
       throw new Error('Some of the provided tag IDs do not exist');
     }
     
+    // Update the note
     return this.notesService.updateNote(id, { ...noteData, tags: noteTags });
   }
 
@@ -59,11 +69,4 @@ export class NotesController {
   async deleteNote(@Param('id') id: number): Promise<void> {
     return this.notesService.deleteNote(id);
   }
-  
-  
-  
-  
-  
-  
 }
-
