@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { User } from "./user.entity";
-import { CreateUserDto, UpdateUserDto } from "./type";
+import { CreateUserDto, UpdateUserDto } from "../../dtos/user";
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -15,11 +15,10 @@ export class UserService {
     // Create a new user
     async create(createUserDto: CreateUserDto): Promise<User> {
       const { password, email, username } = createUserDto;
-      const hashedPassword = await bcrypt.hash(password, 10);
       const user = this.userRepository.create({
         email,
         username,
-        password: hashedPassword,
+        password,
       });
       return await this.userRepository.save(user);
     }
@@ -68,7 +67,7 @@ export class UserService {
 async remove(id: number): Promise<void> {
   const user = await this.userRepository.findOne({ where: { id }, relations: ['notes'] });
   if (!user) {
-    throw new Error('User not found');
+    throw new NotFoundException('User not found');
   }
   await this.userRepository.remove(user);
 }

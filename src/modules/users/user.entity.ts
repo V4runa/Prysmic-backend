@@ -25,8 +25,4 @@ export class User {
     @OneToMany(() => Note, (note) => note.user)
     notes: Note[];
 
-    @BeforeInsert()
-    async hashPassword() {
-    this.password = await bcrypt.hash(this.password, 10);
-    }
 }

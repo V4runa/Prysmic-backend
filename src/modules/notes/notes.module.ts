@@ -10,5 +10,6 @@ import { UserModule } from "../users/user.module";
   imports: [TypeOrmModule.forFeature([Note, Tag]), UserModule],
   controllers: [NotesController],
   providers: [NotesService],
+  exports: [NotesService],
 })
 export class NotesModule {}
