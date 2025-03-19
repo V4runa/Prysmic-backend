@@ -39,8 +39,8 @@ export class NotesService {
     }
 
     return this.notesRepository.find({
-      where: { user },
-      relations: ['tags'],  
+      where: { user: { id: userId } },
+      relations: ['tags', 'user'],  
     });
   }
 

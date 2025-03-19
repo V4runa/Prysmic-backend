@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { NotesModule } from './modules/notes/notes.module';
 import { TagsModule } from './modules/tags/tags.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UserModule } from './modules/users/user.module';
 
 @Module({
   imports: [
@@ -14,9 +16,11 @@ import { TagsModule } from './modules/tags/tags.module';
         type: 'postgres',
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: false, // Set to false in production
+        synchronize: false,
       }),
     }),
+    AuthModule,
+    UserModule,
     NotesModule,
     TagsModule,
   ],

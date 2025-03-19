@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Delete, Body, Param } from "@nestjs/common";
+import { Controller, Get, Post, Delete, Body, Param, UseGuards } from "@nestjs/common";
 import { TagsService } from "./tags.service";
 import { Tag } from "./tags.entity";
+import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 
 
 @Controller('tags')
@@ -9,6 +10,7 @@ export class TagsController {
 
   // Create a new tag
   @Post()
+  @UseGuards(JwtAuthGuard)
   async createTag(@Body('name') name: string): Promise<Tag> {
     return this.tagsService.createTag(name);  
   }
@@ -27,6 +29,7 @@ export class TagsController {
 
   // Delete a tag
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   async deleteTag(@Param('id') id: number): Promise<void> {
     return this.tagsService.deleteTag(id);
   }
