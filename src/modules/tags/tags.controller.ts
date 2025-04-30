@@ -3,7 +3,6 @@ import { TagsService } from "./tags.service";
 import { Tag } from "./tags.entity";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 
-
 @Controller('tags')
 export class TagsController {
   constructor(private readonly tagsService: TagsService) {}
@@ -11,8 +10,11 @@ export class TagsController {
   // Create a new tag
   @Post()
   @UseGuards(JwtAuthGuard)
-  async createTag(@Body('name') name: string): Promise<Tag> {
-    return this.tagsService.createTag(name);  
+  async createTag(
+    @Body('name') name: string,
+    @Body('color') color?: string
+  ): Promise<Tag> {
+    return this.tagsService.createTag(name, color);
   }
 
   // Get all tags
@@ -33,4 +35,4 @@ export class TagsController {
   async deleteTag(@Param('id') id: number): Promise<void> {
     return this.tagsService.deleteTag(id);
   }
-} 
+}

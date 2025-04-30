@@ -1,8 +1,8 @@
-import { Column, Entity, ManyToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from "typeorm";
+import { Column, Entity, ManyToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, JoinTable } from "typeorm";
 import { Tag } from "../tags/tags.entity";
 import { User } from "../users/user.entity";
 
-@Entity('notes') 
+@Entity('notes')
 export class Note {
   @PrimaryGeneratedColumn()
   id: number;
@@ -25,7 +25,11 @@ export class Note {
   @Column({ default: false })
   isArchived: boolean;
 
-  @ManyToMany(() => Tag, (tag) => tag.notes)
+  @ManyToMany(() => Tag, (tag) => tag.notes, { 
+    cascade: true, 
+    onDelete: "CASCADE"        
+  })
+  @JoinTable({ name: 'note_tags' })               
   tags: Tag[];
 
   @ManyToOne(() => User, (user) => user.notes)

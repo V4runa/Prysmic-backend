@@ -1,4 +1,4 @@
-import { Column, Entity, JoinTable, ManyToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from "typeorm";
 import { Note } from "../notes/notes.entity";
 
 
@@ -10,7 +10,9 @@ export class Tag {
   @Column({ unique: true })
   name: string;
 
+  @Column({ nullable: true })
+  color?: string; 
+
   @ManyToMany(() => Note, (note) => note.tags)
-  @JoinTable({ name: 'note_tags' })
   notes: Note[]; 
 }

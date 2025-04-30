@@ -3,7 +3,6 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Tag } from "./tags.entity";
 
-
 @Injectable()
 export class TagsService {
   constructor(
@@ -11,14 +10,14 @@ export class TagsService {
   ) {}
 
   // Create a new tag
-async createTag(name: string): Promise<Tag> {
-  const existingTag = await this.tagsRepository.findOne({ where: { name } });
-  if (existingTag) {
-    throw new Error('Tag already exists');
+  async createTag(name: string, color?: string): Promise<Tag> {
+    const existingTag = await this.tagsRepository.findOne({ where: { name } });
+    if (existingTag) {
+      throw new Error('Tag already exists');
+    }
+    const tag = this.tagsRepository.create({ name, color });
+    return this.tagsRepository.save(tag);
   }
-  const tag = this.tagsRepository.create({ name });
-  return this.tagsRepository.save(tag);
-}
 
   // Get all tags
   async getAllTags(): Promise<Tag[]> {
