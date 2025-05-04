@@ -1,6 +1,6 @@
-import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, ManyToMany, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { Note } from "../notes/notes.entity";
-
+import { User } from "../users/user.entity";
 
 @Entity('tags')
 export class Tag {
@@ -15,4 +15,7 @@ export class Tag {
 
   @ManyToMany(() => Note, (note) => note.tags)
   notes: Note[]; 
+
+  @ManyToOne(() => User, (user) => user.tags, { onDelete: 'CASCADE' })
+  user: User;
 }

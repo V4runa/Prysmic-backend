@@ -1,7 +1,19 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+  BadRequestException,
+  Put,
+} from "@nestjs/common";
 import { TagsService } from "./tags.service";
 import { Tag } from "./tags.entity";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { Request } from "express";
 
 @Controller('tags')
 export class TagsController {
@@ -12,27 +24,57 @@ export class TagsController {
   @UseGuards(JwtAuthGuard)
   async createTag(
     @Body('name') name: string,
-    @Body('color') color?: string
+    @Body('color') color: string,
+    @Req() req: Request
   ): Promise<Tag> {
-    return this.tagsService.createTag(name, color);
+    const userId = (req.user as any)?.userId;
+    if (!userId) throw new BadRequestException('Missing userId from token');
+    return this.tagsService.createTag(name, color, userId);
   }
 
-  // Get all tags
+  // Get all tags for the logged-in user
   @Get()
-  async getAllTags(): Promise<Tag[]> {
-    return this.tagsService.getAllTags();
+  @UseGuards(JwtAuthGuard)
+  async getAllTags(@Req() req: Request): Promise<Tag[]> {
+    const userId = (req.user as any)?.userId;
+    if (!userId) throw new BadRequestException('Missing userId from token');
+    return this.tagsService.getAllTags(userId);
   }
 
-  // Get a single tag by ID
+  // Get a specific tag by ID (must be owned by the user)
   @Get(':id')
-  async getTagById(@Param('id') id: number): Promise<Tag> {
-    return this.tagsService.getTagById(id);
+  @UseGuards(JwtAuthGuard)
+  async getTagById(
+    @Param('id') id: number,
+    @Req() req: Request
+  ): Promise<Tag> {
+    const userId = (req.user as any)?.userId;
+    if (!userId) throw new BadRequestException('Missing userId from token');
+    return this.tagsService.getTagById(id, userId);
   }
 
-  // Delete a tag
+  // Delete a tag if it belongs to the user and isn't used
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  async deleteTag(@Param('id') id: number): Promise<void> {
-    return this.tagsService.deleteTag(id);
+  async deleteTag(
+    @Param('id') id: number,
+    @Req() req: Request
+  ): Promise<void> {
+    const userId = (req.user as any)?.userId;
+    if (!userId) throw new BadRequestException('Missing userId from token');
+    return this.tagsService.deleteTag(id, userId);
   }
+
+  @Put(':id')
+@UseGuards(JwtAuthGuard)
+async updateTag(
+  @Param('id') id: number,
+  @Body('name') name: string,
+  @Body('color') color: string,
+  @Req() req: Request
+): Promise<Tag> {
+  const userId = (req.user as any)?.userId;
+  if (!userId) throw new BadRequestException('Missing userId from token');
+  return this.tagsService.updateTag(id, name, color, userId);
+}
 }

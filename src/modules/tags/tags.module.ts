@@ -4,11 +4,12 @@ import { Tag } from "./tags.entity";
 import { TagsController } from "./tags.controller";
 import { TagsService } from "./tags.service";
 import { NotesModule } from "../notes/notes.module";
-
+import { UserModule } from "../users/user.module";
 @Module({
   imports: [
     TypeOrmModule.forFeature([Tag]),
-    forwardRef(() => NotesModule)
+    forwardRef(() => NotesModule),
+    UserModule,
   ],
   controllers: [TagsController],
   providers: [TagsService],

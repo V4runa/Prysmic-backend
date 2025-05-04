@@ -1,10 +1,21 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req, BadRequestException } from "@nestjs/common";
-import { NotesService } from "./notes.service";
-import { Note } from "./notes.entity";
-import { TagsService } from "../tags/tags.service";
-import { Tag } from "../tags/tags.entity";
-import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { CreateNoteDto } from "../../dtos/create-note.dto";
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+  BadRequestException,
+} from '@nestjs/common';
+import { NotesService } from './notes.service';
+import { Note } from './notes.entity';
+import { TagsService } from '../tags/tags.service';
+import { Tag } from '../tags/tags.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CreateNoteDto } from '../../dtos/create-note.dto';
 
 @Controller('notes')
 export class NotesController {
@@ -18,22 +29,20 @@ export class NotesController {
   @UseGuards(JwtAuthGuard)
   async createNote(
     @Req() req: any,
-    @Body() createNoteDto: CreateNoteDto
+    @Body() createNoteDto: CreateNoteDto,
   ): Promise<Note> {
     const { title, content, tagIds = [] } = createNoteDto;
     const userId = req.user.userId;
-  
-    const tags = await this.tagsService.getAllTags();
+
+    const tags = await this.tagsService.getAllTags(userId);
     const noteTags = tags.filter((tag) => tagIds.includes(tag.id));
-  
+
     if (noteTags.length !== tagIds.length) {
       throw new BadRequestException('Some of the provided tag IDs do not exist');
     }
-    console.log('Received DTO:', createNoteDto);
+
     return this.notesService.createNote(title, content, noteTags, userId);
   }
-  
-  
 
   // Get all notes for a user
   @Get('user/:userId')
@@ -56,12 +65,17 @@ export class NotesController {
     @Param('id') id: number,
     @Body() noteData: Partial<Note>,
     @Body('tagIds') tagIds: number[],
+    @Req() req: any,
   ): Promise<Note> {
-    const tags = await this.tagsService.getAllTags();
+    const userId = req.user.userId;
+
+    const tags = await this.tagsService.getAllTags(userId);
     const noteTags = tags.filter((tag) => tagIds.includes(tag.id));
+
     if (noteTags.length !== tagIds.length) {
-      throw new Error('Some of the provided tag IDs do not exist');
+      throw new BadRequestException('Some of the provided tag IDs do not exist');
     }
+
     return this.notesService.updateNote(id, { ...noteData, tags: noteTags });
   }
 
