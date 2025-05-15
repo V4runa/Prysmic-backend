@@ -16,20 +16,20 @@ export class HabitService {
   ) {}
 
   async createHabit(user: User, name: string, description?: string) {
-    const habit = this.habitRepo.create({ name, description, user });
+    const habit = this.habitRepo.create({ name, description, user: { id: user.id } });
     return this.habitRepo.save(habit);
   }
 
   async getHabits(user: User) {
     return this.habitRepo.find({
-      where: { user, isActive: true },
+      where: { user: { id: user.id }, isActive: true },
       relations: ['checks'],
     });
   }
 
   async toggleCheck(habitId: number, user: User) {
     const habit = await this.habitRepo.findOne({
-      where: { id: habitId, user },
+      where: { id: habitId, user: { id: user.id } },
     });
 
     if (!habit) throw new NotFoundException('Habit not found');
@@ -52,7 +52,7 @@ export class HabitService {
 
   async deleteHabit(habitId: number, user: User) {
     const habit = await this.habitRepo.findOne({
-      where: { id: habitId, user },
+      where: { id: habitId, user: { id: user.id } },
     });
     if (!habit) throw new NotFoundException('Habit not found');
     habit.isActive = false;
@@ -61,7 +61,7 @@ export class HabitService {
 
   async getHabitById(habitId: number, user: User) {
     const habit = await this.habitRepo.findOne({
-      where: { id: habitId, user },
+      where: { id: habitId, user: { id: user.id } },
       relations: ['checks'],
     });
     if (!habit) throw new NotFoundException('Habit not found');
@@ -74,7 +74,7 @@ export class HabitService {
     updates: Partial<{ name: string; description: string; isActive: boolean }>,
   ) {
     const habit = await this.habitRepo.findOne({
-      where: { id: habitId, user },
+      where: { id: habitId, user: { id: user.id } },
     });
     if (!habit) throw new NotFoundException('Habit not found');
 
