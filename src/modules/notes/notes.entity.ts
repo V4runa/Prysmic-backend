@@ -1,6 +1,18 @@
-import { Column, Entity, ManyToMany, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, JoinTable } from "typeorm";
-import { Tag } from "../tags/tags.entity";
-import { User } from "../users/user.entity";
+import {
+  Column,
+  Entity,
+  ManyToMany,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  JoinTable,
+  OneToMany,
+} from 'typeorm';
+import { Tag } from '../tags/tags.entity';
+import { User } from '../users/user.entity';
+import { Habit } from '../habits/habit.entity';
 
 @Entity('notes')
 export class Note {
@@ -25,14 +37,17 @@ export class Note {
   @Column({ default: false })
   isArchived: boolean;
 
-  @ManyToMany(() => Tag, (tag) => tag.notes, { 
-    cascade: true, 
-    onDelete: "CASCADE"        
+  @ManyToMany(() => Tag, (tag) => tag.notes, {
+    cascade: true,
+    onDelete: 'CASCADE',
   })
-  @JoinTable({ name: 'note_tags' })               
+  @JoinTable({ name: 'note_tags' })
   tags: Tag[];
 
   @ManyToOne(() => User, (user) => user.notes)
   @JoinColumn({ name: 'userId' })
   user: User;
+
+  @OneToMany(() => Habit, (habit) => habit.originNote)
+  habitsThatOriginatedHere: Habit[];
 }
