@@ -15,7 +15,11 @@ import { HabitModule } from './modules/habits/habit.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         type: 'postgres',
-        url: configService.get<string>('DATABASE_URL'),
+        host: configService.get('DB_HOST', 'localhost'),
+        port: configService.get('DB_PORT', 5432),
+        username: configService.get('DB_USERNAME', 'postgres'),
+        password: configService.get('DB_PASSWORD', 'password'),
+        database: configService.get('DB_NAME', 'ai_notes'),
         autoLoadEntities: true,
         synchronize: false,
       }),

@@ -26,20 +26,28 @@ export class HabitService {
   ) {}
 
   async createHabit(user: User, dto: CreateHabitDto) {
+    console.log('Creating habit for user:', user); // 👈 Add this
+  
     const habit = this.habitRepo.create({
       ...dto,
       frequency: parseFrequency(dto.frequency),
       user,
     });
+  
     return this.habitRepo.save(habit);
   }
+  
 
   async getHabits(user: User) {
-    return this.habitRepo.find({
-      where: { user: { id: user.id }, isActive: true },
-      relations: ['checks'],
-    });
+    return this.habitRepo
+      .createQueryBuilder("habit")
+      .leftJoinAndSelect("habit.checks", "check")
+      .where("habit.userId = :userId", { userId: user.id }) // <- fix here
+      .andWhere("habit.isActive = :active", { active: true })
+      .getMany();
   }
+  
+  
 
   async getHabitById(habitId: number, user: User) {
     const habit = await this.habitRepo.findOne({

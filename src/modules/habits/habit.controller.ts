@@ -14,6 +14,7 @@ import { HabitService } from './habit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
 import { UpdateHabitDto } from '../../dtos/update-habit.dto';
+import { User } from '../users/user.entity';
 
 @Controller('habits')
 @UseGuards(JwtAuthGuard)
@@ -22,12 +23,13 @@ export class HabitController {
 
   @Post()
   create(@Request() req, @Body() dto: CreateHabitDto) {
-    return this.habitService.createHabit(req.user, dto);
+    return this.habitService.createHabit({ id: req.user.userId } as User, dto);
+
   }
 
   @Get()
   getAll(@Request() req) {
-    return this.habitService.getHabits(req.user);
+    return this.habitService.getHabits({ id: req.user.userId } as User);
   }
 
   @Get(':id')
