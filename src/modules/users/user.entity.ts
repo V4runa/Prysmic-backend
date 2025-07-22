@@ -42,4 +42,5 @@ export class User {
 
   @OneToMany(() => Habit, (habit) => habit.user)
   habits: Habit[];
+
 }

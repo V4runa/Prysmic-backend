@@ -31,7 +31,7 @@ export class NotesService {
     return this.notesRepository.save(note);
   }
 
-  // Get all notes for a specific user
+  // Get all notes for a specific user, sorted by creation time (newest first)
   async getNotesByUser(userId: number): Promise<Note[]> {
     const user = await this.userService.findById(userId);
     if (!user) {
@@ -40,7 +40,8 @@ export class NotesService {
 
     return this.notesRepository.find({
       where: { user: { id: userId } },
-      relations: ['tags', 'user'],  
+      relations: ['tags', 'user'],
+      order: { createdAt: 'DESC' }, // Sort newest first
     });
   }
 
