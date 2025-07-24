@@ -1,13 +1,12 @@
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { config } from 'dotenv';
 config();
-
-// Use relative paths instead of 'src/...'
 import { Note } from './modules/notes/notes.entity';
 import { Tag } from './modules/tags/tags.entity';
 import { User } from './modules/users/user.entity';
 import { Habit } from './modules/habits/habit.entity';
 import { HabitCheck } from './modules/habits/habit-check.entity';
+import { Task } from './modules/tasks/tasks.entity';
 
 export const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
@@ -23,6 +22,7 @@ export const dataSourceOptions: DataSourceOptions = {
     User,
     Habit,
     HabitCheck,
+    Task,
   ],
   migrations: ['src/migrations/*.ts'],
   synchronize: false,

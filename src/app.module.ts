@@ -6,6 +6,7 @@ import { TagsModule } from './modules/tags/tags.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/users/user.module';
 import { HabitModule } from './modules/habits/habit.module';
+import { TaskModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { HabitModule } from './modules/habits/habit.module';
     NotesModule,
     TagsModule,
     HabitModule,
+    TaskModule,
   ],
   controllers: [],
   providers: [],
