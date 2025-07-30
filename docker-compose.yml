@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ai_notes
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - ainotes-net
+
+  backend:
+    build:
+      context: .
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    command: npm run start:dev
+    networks:
+      - ainotes-net
+
+  frontend:
+    build:
+      context: ../ai-notes-frontend
+    depends_on:
+      - backend
+    volumes:
+      - ../ai-notes-frontend:/app
+      - /app/node_modules
+    ports:
+      - "3001:3001"
+    command: npm run dev
+    networks:
+      - ainotes-net
+
+volumes:
+  db_data:
+
+networks:
+  ainotes-net:
