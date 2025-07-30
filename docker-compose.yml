@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: ai_notes
     ports:
-      - "5432:5432"
+      - "6543:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     networks:
@@ -24,7 +24,7 @@ services:
       - .:/app
       - /app/node_modules
     ports:
-      - "3000:3000"
+      - "3000:3001"
     env_file:
       - .env
     command: npm run start:dev
