@@ -24,7 +24,7 @@ services:
       - .:/app
       - /app/node_modules
     ports:
-      - "3000:3001"
+      - "3001:3001"
     env_file:
       - .env
     command: npm run start:dev
@@ -40,7 +40,9 @@ services:
       - ../ai-notes-frontend:/app
       - /app/node_modules
     ports:
-      - "3001:3001"
+      - "3000:3001"
+    env_file:
+      - ../ai-notes-frontend/.env
     command: npm run dev
     networks:
       - ainotes-net
