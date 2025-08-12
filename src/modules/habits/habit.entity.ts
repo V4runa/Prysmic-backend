@@ -6,6 +6,7 @@ import {
   OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
+  JoinColumn,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { HabitCheck } from './habit-check.entity';
@@ -45,7 +46,11 @@ export class Habit {
   isActive: boolean;
 
   @ManyToOne(() => User, (user) => user.habits, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
   user: User;
+
+  @Column({ nullable: false })
+  userId: number;
 
   @OneToMany(() => HabitCheck, (check) => check.habit)
   checks: HabitCheck[];

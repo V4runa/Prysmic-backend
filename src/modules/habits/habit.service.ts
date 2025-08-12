@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Habit } from './habit.entity';
 import { HabitCheck } from './habit-check.entity';
-import { User } from '../users/user.entity';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
 import { UpdateHabitDto } from '../../dtos/update-habit.dto';
 import { HabitFrequency } from '../../enums/habit-frequency.enum';
@@ -20,85 +19,57 @@ export class HabitService {
   constructor(
     @InjectRepository(Habit)
     private habitRepo: Repository<Habit>,
-
     @InjectRepository(HabitCheck)
     private checkRepo: Repository<HabitCheck>,
   ) {}
 
-  async createHabit(user: User, dto: CreateHabitDto) {
-    console.log('Creating habit for user:', user); // 👈 Add this
-  
+  async createHabit(userId: number, dto: CreateHabitDto) {
     const habit = this.habitRepo.create({
       ...dto,
       frequency: parseFrequency(dto.frequency),
-      user,
+      userId,
     });
-  
     return this.habitRepo.save(habit);
   }
-  
 
-  async getHabits(user: User) {
-    return this.habitRepo
-      .createQueryBuilder("habit")
-      .leftJoinAndSelect("habit.checks", "check")
-      .where("habit.userId = :userId", { userId: user.id }) // <- fix here
-      .andWhere("habit.isActive = :active", { active: true })
-      .getMany();
+  async getHabits(userId: number) {
+    return this.habitRepo.find({
+      where: { userId, isActive: true },
+      relations: ['checks'],
+      order: { createdAt: 'DESC' },
+    });
   }
-  
-  
 
-  async getHabitById(habitId: number, user: User) {
+  async getHabitById(habitId: number, userId: number) {
     const habit = await this.habitRepo.findOne({
-      where: {
-        id: habitId,
-        user: { id: user.id }, // Proper user ownership check
-      },
+      where: { id: habitId, userId },
       relations: ['checks'],
     });
     if (!habit) throw new NotFoundException('Habit not found or you do not have access.');
     return habit;
   }
 
-  async updateHabit(habitId: number, user: User, dto: UpdateHabitDto) {
-    const habit = await this.habitRepo.findOne({
-      where: {
-        id: habitId,
-        user: { id: user.id },
-      },
-    });
+  async updateHabit(habitId: number, userId: number, dto: UpdateHabitDto) {
+    const habit = await this.habitRepo.findOne({ where: { id: habitId, userId } });
     if (!habit) throw new NotFoundException('Habit not found');
 
     Object.assign(habit, {
       ...dto,
-      frequency: dto.frequency
-        ? parseFrequency(dto.frequency)
-        : habit.frequency,
+      frequency: dto.frequency ? parseFrequency(dto.frequency) : habit.frequency,
     });
-
     return this.habitRepo.save(habit);
   }
 
-  async deleteHabit(habitId: number, user: User) {
-    const habit = await this.habitRepo.findOne({
-      where: {
-        id: habitId,
-        user: { id: user.id },
-      },
-    });
+  async deleteHabit(habitId: number, userId: number) {
+    const habit = await this.habitRepo.findOne({ where: { id: habitId, userId } });
     if (!habit) throw new NotFoundException('Habit not found');
-
     habit.isActive = false;
     return this.habitRepo.save(habit);
   }
 
-  async toggleCheck(habitId: number, user: User) {
+  async toggleCheck(habitId: number, userId: number) {
     const habit = await this.habitRepo.findOne({
-      where: {
-        id: habitId,
-        user: { id: user.id },
-      },
+      where: { id: habitId, userId },
       relations: ['checks'],
     });
     if (!habit) throw new NotFoundException('Habit not found');
@@ -106,7 +77,8 @@ export class HabitService {
     const today = new Date().toISOString().split('T')[0];
 
     const existing = await this.checkRepo.findOne({
-      where: { habit, date: today },
+      where: { habit: { id: habit.id }, date: today },
+      relations: ['habit'],
     });
 
     if (existing) {

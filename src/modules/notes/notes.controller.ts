@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
   BadRequestException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { NotesService } from './notes.service';
 import { Note } from './notes.entity';
@@ -47,7 +48,7 @@ export class NotesController {
   // Get all notes for a user
   @Get('user/:userId')
   @UseGuards(JwtAuthGuard)
-  async getNotesByUser(@Param('userId') userId: number): Promise<Note[]> {
+  async getNotesByUser(@Param('userId', ParseIntPipe) userId: number) {
     return this.notesService.getNotesByUser(userId);
   }
 
