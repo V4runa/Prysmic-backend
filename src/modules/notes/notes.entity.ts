@@ -44,9 +44,12 @@ export class Note {
   @JoinTable({ name: 'note_tags' })
   tags: Tag[];
 
-  @ManyToOne(() => User, (user) => user.notes)
+  @ManyToOne(() => User, (user) => user.notes, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
+
+  @Column({ nullable: false })
+  userId: number;
 
   @OneToMany(() => Habit, (habit) => habit.originNote)
   habitsThatOriginatedHere: Habit[];
