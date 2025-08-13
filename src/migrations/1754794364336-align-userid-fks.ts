@@ -13,7 +13,7 @@ export class alignUseridFks1699999999999 implements MigrationInterface {
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_notes_user') THEN
           ALTER TABLE "notes"
           ADD CONSTRAINT "FK_notes_user"
-          FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE;
+          FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE;
         END IF;
       END$$;
     `);
@@ -37,7 +37,7 @@ export class alignUseridFks1699999999999 implements MigrationInterface {
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_habit_user') THEN
           ALTER TABLE "habit"
           ADD CONSTRAINT "FK_habit_user"
-          FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE;
+          FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE;
         END IF;
       END$$;
     `);
