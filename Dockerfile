@@ -1,23 +1,26 @@
-# 1. Use an official Node.js image
+# 1) Base image
 FROM node:18-alpine
 
-# 2. Set the working directory inside the container
+# 2) Workdir
 WORKDIR /app
 
-# 3. Install tools needed to build some npm packages (e.g., bcrypt)
+# 3) System deps (bcrypt etc.)
 RUN apk add --no-cache python3 make g++
 
-# 4. Copy only the package files (for caching layers)
+# 4) Install deps first for better layer caching
 COPY package*.json ./
+# use ci for reproducible installs; falls back to install if no lock
+RUN npm ci || npm install
 
-# 5. Install dependencies
-RUN npm install
-
-# 6. Copy the rest of the source code into the image
+# 5) Copy source
 COPY . .
 
-# 7. Expose the port your NestJS app runs on
-EXPOSE 3000
+# 6) Environment (explicit helps PaaS & humans)
+ENV NODE_ENV=development
+ENV PORT=3001
 
-# 8. Start the app in dev mode with hot reload
+# 7) Match Nest dev port
+EXPOSE 3001
+
+# 8) Start dev server (ts-node)
 CMD ["npm", "run", "start:dev"]
