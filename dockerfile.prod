@@ -1,0 +1,26 @@
+# -------- Build stage --------
+  FROM node:18-alpine AS build
+  WORKDIR /app
+  RUN apk add --no-cache python3 make g++
+  COPY package*.json ./
+  RUN npm ci || npm install
+  COPY . .
+  RUN npm run build
+  
+  # -------- Runtime stage --------
+  FROM node:18-alpine AS runtime
+  WORKDIR /app
+  
+  # Install ONLY production deps
+  COPY package*.json ./
+  RUN npm ci --omit=dev || npm install --omit=dev
+  
+  # Copy compiled app & any needed assets
+  COPY --from=build /app/dist ./dist
+  
+  ENV NODE_ENV=production
+  ENV PORT=3001
+  EXPOSE 3001
+  
+  CMD ["npm","run","start:prod"]
+  
