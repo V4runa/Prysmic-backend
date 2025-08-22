@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
@@ -34,17 +32,17 @@ services:
 
   frontend:
     build:
-      context: ../ai-notes-frontend
+      context: ../frontend
     restart: always
     depends_on:
       - backend
     volumes:
-      - ../ai-notes-frontend:/app
+      - ../frontend:/app
       - /app/node_modules
     ports:
       - "3000:3000"
     env_file:
-      - ../ai-notes-frontend/.env.production
+      - ../frontend/.env.production
     command: npm run dev
     networks:
       - ainotes-net
