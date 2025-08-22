@@ -22,7 +22,7 @@ services:
     ports:
       - "3001:3001"
     env_file:
-      - .env
+      - /opt/ai-notes/backend/.env
     command: ["node", "dist/main"]
     networks:
       - ainotes-net
