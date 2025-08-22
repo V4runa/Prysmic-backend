@@ -42,7 +42,7 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - ../ai-notes-frontend/.env
+      - ../frontend/.env.production
     command: npm run dev
     networks:
       - ainotes-net
