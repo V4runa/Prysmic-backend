@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ai_notes
+    ports:
+      - "6543:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - ainotes-net
+
+  backend:
+    build:
+      context: .
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    command: ["node", "dist/main"]
+    networks:
+      - ainotes-net
+
+  frontend:
+    build:
+      context: ../frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - ainotes-net
+
+volumes:
+  db_data:
+
+networks:
+  ainotes-net:
