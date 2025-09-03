@@ -1,14 +1,15 @@
-import { Column, Entity, ManyToMany, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, ManyToMany, ManyToOne, PrimaryGeneratedColumn, Unique } from "typeorm";
 import { Note } from "../notes/notes.entity";
 import { User } from "../users/user.entity";
 import { Task } from "../tasks/tasks.entity";
 
 @Entity('tags')
+@Unique(['name', 'user'])
 export class Tag {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   name: string;
 
   @Column({ nullable: true })
