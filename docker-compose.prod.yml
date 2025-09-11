@@ -38,7 +38,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
     env_file:
-    - .env.prod
+      - .env.prod
     restart: always
     depends_on:
       - backend
@@ -55,6 +55,12 @@ services:
 
   traefik:
     image: traefik:v2.11
+    env_file:
+      - .env.prod
+    environment:
+      - APP_HOST=${APP_HOST}
+      - API_HOST=${API_HOST}
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
@@ -75,7 +81,7 @@ services:
 
 volumes:
   db_data:
-  traefik_letsencrypt:   
+  traefik_letsencrypt:
 
 networks:
   ainotes-net:
