@@ -67,7 +67,7 @@ services:
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.le.acme.tlschallenge=true
-      - --certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}
+      - --certificatesresolvers.le.acme.email=varunanda.creative@gmail.com
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
     ports:
       - "80:80"
