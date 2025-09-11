@@ -12,8 +12,11 @@ import { Task } from './modules/tasks/tasks.entity';
 const isCompiled = __dirname.includes('dist');
 const isProd = process.env.NODE_ENV === 'production';
 const enableSSL = process.env.DB_SSL === 'true';
-
 const useUrl = !!process.env.DATABASE_URL;
+
+//Choose correct host for local vs Docker
+const runningInDocker = process.env.RUNNING_IN_DOCKER === 'true';
+const resolvedHost = runningInDocker ? 'db' : 'localhost';
 
 export const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
@@ -21,7 +24,7 @@ export const dataSourceOptions: DataSourceOptions = {
   ...(useUrl
     ? { url: process.env.DATABASE_URL }
     : {
-        host: process.env.DB_HOST || 'db' || 'localhost',
+        host: process.env.DB_HOST || resolvedHost,
         port: parseInt(process.env.DB_PORT || '5432', 10),
         username: process.env.DB_USERNAME || 'postgres',
         password: process.env.DB_PASSWORD || 'password',
@@ -32,7 +35,6 @@ export const dataSourceOptions: DataSourceOptions = {
   migrations: [isCompiled ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
 
   synchronize: false,
-
   logging: !isProd,
 
   ssl: enableSSL ? { rejectUnauthorized: false } : false,
