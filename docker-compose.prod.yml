@@ -22,7 +22,7 @@ services:
     expose:
       - "3001"
     env_file:
-      - /opt/ai-notes/backend/.env
+      - .env.prod
     command: ["node", "dist/main"]
     networks:
       - ainotes-net
@@ -36,6 +36,9 @@ services:
   frontend:
     build:
       context: ../frontend
+      dockerfile: Dockerfile
+    env_file:
+    - .env.prod
     restart: always
     depends_on:
       - backend
