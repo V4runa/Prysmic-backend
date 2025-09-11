@@ -28,7 +28,7 @@ services:
       - ainotes-net
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`${API_HOST}`)
+      - traefik.http.routers.api.rule=Host(`api.prysmic.me`)
       - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.routers.api.tls.certresolver=le
       - traefik.http.services.api.loadbalancer.server.port=3001
@@ -48,7 +48,7 @@ services:
       - ainotes-net
     labels:
       - traefik.enable=true
-      - traefik.http.routers.front.rule=Host(`${APP_HOST}`)
+      - traefik.http.routers.front.rule=Host(`app.prysmic.me`)
       - traefik.http.routers.front.entrypoints=websecure
       - traefik.http.routers.front.tls.certresolver=le
       - traefik.http.services.front.loadbalancer.server.port=3000
@@ -58,8 +58,8 @@ services:
     env_file:
       - .env.prod
     environment:
-      - APP_HOST=${APP_HOST}
-      - API_HOST=${API_HOST}
+      - APP_HOST=app.prysmic.me
+      - API_HOST=api.prysmic.me
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
     command:
       - --providers.docker=true
