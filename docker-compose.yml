@@ -29,19 +29,21 @@ services:
       - "3001:3001"
     env_file:
       - .env
-    command: "npm i && npm run start:dev"
+    command: npm run start:dev
     networks:
       - ainotes-net
 
   frontend:
     build:
       context: ../ai-notes-frontend
+      dockerfile: Dockerfile
     restart: always
     depends_on:
       - backend
     volumes:
       - ../ai-notes-frontend:/app
       - /app/node_modules
+      - /app/.next
     ports:
       - "3000:3000"
     env_file:
