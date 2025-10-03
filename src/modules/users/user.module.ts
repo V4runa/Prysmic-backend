@@ -6,6 +6,7 @@ import { UserController } from './user.controller';
 import { NotesModule } from '../notes/notes.module';
 import { AuthModule } from '../auth/auth.module';
 import { HabitModule } from '../habits/habit.module';
+import { MoodModule } from '../moods/mood.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { HabitModule } from '../habits/habit.module';
     forwardRef(() => NotesModule),
     forwardRef(() => AuthModule),
     forwardRef(() => HabitModule),
+    forwardRef(() => MoodModule),
   ],
   controllers: [UserController],
   providers: [UserService],

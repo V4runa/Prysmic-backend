@@ -8,6 +8,7 @@ import { User } from './modules/users/user.entity';
 import { Habit } from './modules/habits/habit.entity';
 import { HabitCheck } from './modules/habits/habit-check.entity';
 import { Task } from './modules/tasks/tasks.entity';
+import { Mood } from './modules/moods/mood.entity';
 
 const isCompiled = __dirname.includes('dist');
 const isProd = process.env.NODE_ENV === 'production';
@@ -31,7 +32,7 @@ export const dataSourceOptions: DataSourceOptions = {
         database: process.env.DB_NAME || 'ai_notes',
       }),
 
-  entities: [Note, Tag, User, Habit, HabitCheck, Task],
+  entities: [Note, Tag, User, Habit, HabitCheck, Task, Mood],
   migrations: [isCompiled ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
 
   synchronize: false,
