@@ -16,6 +16,7 @@ services:
   backend:
     build:
       context: .
+      target: runtime
     restart: always
     depends_on:
       - db
@@ -23,6 +24,7 @@ services:
       - "3001"
     env_file:
       - .env.prod
+    command: ["npm", "run", "start:prod"] 
     networks:
       - ainotes-net
     labels:
