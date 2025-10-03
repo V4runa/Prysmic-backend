@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { Tag } from '../tags/tags.entity';
 import { Habit } from '../habits/habit.entity';
 import { Task } from '../tasks/tasks.entity';
+import { Mood } from '../moods/mood.entity';
 
 @Entity('users')
 export class User {
@@ -46,4 +47,7 @@ export class User {
 
   @OneToMany(() => Task, (task) => task.user)
   tasks: Task[];
+
+  @OneToMany(() => Mood, (mood) => mood.user)
+  moods: Mood[];
 }
