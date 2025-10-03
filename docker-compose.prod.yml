@@ -16,7 +16,6 @@ services:
   backend:
     build:
       context: .
-      target: runtime
     restart: always
     depends_on:
       - db
