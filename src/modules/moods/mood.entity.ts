@@ -1,4 +1,4 @@
-// src/entities/mood.entity.ts
+// src/modules/moods/mood.entity.ts
 
 import {
   Entity,
@@ -14,8 +14,14 @@ export class Mood {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ type: 'varchar', length: 24 })
+  moodType: string;
+
   @Column({ type: 'varchar', length: 10 })
   emoji: string;
+
+  @Column({ type: 'text', nullable: true })
+  note?: string;
 
   @CreateDateColumn()
   createdAt: Date;

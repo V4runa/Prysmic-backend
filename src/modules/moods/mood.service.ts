@@ -43,13 +43,20 @@ export class MoodService {
       relations: ['user'],
     });
 
+    // Extract optional note WITHOUT changing DTO typing contract
+    const incomingNote = (dto as any)?.note;
+
     if (existing) {
       existing.emoji = dto.emoji;
+      if ((dto as any).note !== undefined) (existing as any).note = (dto as any).note;
+      if ((dto as any).moodType !== undefined) existing.moodType = dto.moodType; // 🆕
       return this.moodRepository.save(existing);
     }
-
+    
     const mood = this.moodRepository.create({
       emoji: dto.emoji,
+      ...(dto as any).note !== undefined ? { note: (dto as any).note } : {},
+      ...(dto as any).moodType !== undefined ? { moodType: dto.moodType } : {}, // 🆕
       user: { id: userId } as any,
     });
 
