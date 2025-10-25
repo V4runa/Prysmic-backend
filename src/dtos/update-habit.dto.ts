@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsBoolean } from 'class-validator';
 import { HabitFrequency } from '../enums/habit-frequency.enum';
 
 export class UpdateHabitDto {
@@ -29,4 +29,8 @@ export class UpdateHabitDto {
   @IsOptional()
   @IsEnum(HabitFrequency)
   frequency?: HabitFrequency;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
