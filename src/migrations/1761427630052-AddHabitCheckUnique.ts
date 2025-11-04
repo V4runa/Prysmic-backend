@@ -4,30 +4,46 @@ export class AddHabitCheckUnique1761427630052 implements MigrationInterface {
   name = 'AddHabitCheckUnique1761427630052'
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Drop any leftover index safely if it exists
+    // Drop leftover index safely
     await queryRunner.query(
       `DROP INDEX IF EXISTS "public"."IDX_35be1df1e1741caca455fbf422"`
     );
 
-    // Add the unique constraint to enforce one check per day per habit
-    await queryRunner.query(
-      `ALTER TABLE "habit_check"
-       ADD CONSTRAINT IF NOT EXISTS "UQ_habit_check_habitId_date"
-       UNIQUE ("habitId","date")`
-    );
+    // Create unique constraint only if it doesn't exist
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'UQ_habit_check_habitId_date'
+        ) THEN
+          ALTER TABLE "habit_check"
+          ADD CONSTRAINT "UQ_habit_check_habitId_date"
+          UNIQUE ("habitId", "date");
+        END IF;
+      END$$;
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Drop the unique constraint if we ever need to roll back
-    await queryRunner.query(
-      `ALTER TABLE "habit_check"
-       DROP CONSTRAINT IF EXISTS "UQ_habit_check_habitId_date"`
-    );
+    // Drop the constraint if it exists
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'UQ_habit_check_habitId_date'
+        ) THEN
+          ALTER TABLE "habit_check"
+          DROP CONSTRAINT "UQ_habit_check_habitId_date";
+        END IF;
+      END$$;
+    `);
 
-    // Optionally recreate the index (no harm)
-    await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_35be1df1e1741caca455fbf422"
-       ON "habit_check" ("date", "habitId")`
-    );
+    // Recreate the index if needed
+    await queryRunner.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_35be1df1e1741caca455fbf422"
+      ON "habit_check" ("date", "habitId");
+    `);
   }
 }
