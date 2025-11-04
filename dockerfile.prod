@@ -17,6 +17,7 @@
   
   # Copy compiled app & any needed assets
   COPY --from=build /app/dist ./dist
+  COPY --from=build /app/src/migrations ./src/migrations
   
   ENV NODE_ENV=production
   ENV PORT=3001
