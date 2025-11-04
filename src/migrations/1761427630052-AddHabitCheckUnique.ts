@@ -1,49 +1,45 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
 export class AddHabitCheckUnique1761427630052 implements MigrationInterface {
-  name = 'AddHabitCheckUnique1761427630052'
+  name = "AddHabitCheckUnique1761427630052";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Drop leftover index safely
+    // Drop old index if present
     await queryRunner.query(
       `DROP INDEX IF EXISTS "public"."IDX_35be1df1e1741caca455fbf422"`
     );
 
-    // Create unique constraint only if it doesn't exist
+    // 1️⃣ Remove duplicate habit_check rows safely
     await queryRunner.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conname = 'UQ_habit_check_habitId_date'
-        ) THEN
-          ALTER TABLE "habit_check"
-          ADD CONSTRAINT "UQ_habit_check_habitId_date"
-          UNIQUE ("habitId", "date");
-        END IF;
-      END$$;
+      DELETE FROM "habit_check" hc
+      USING (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY "habitId","date"
+                 ORDER BY "createdAt" ASC, id ASC
+               ) AS rn
+        FROM "habit_check"
+      ) d
+      WHERE hc.id = d.id AND d.rn > 1;
+    `);
+
+    // 2️⃣ Add the unique constraint (now safe)
+    await queryRunner.query(`
+      ALTER TABLE "habit_check"
+      ADD CONSTRAINT "UQ_habit_check_habitId_date"
+      UNIQUE ("habitId","date");
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Drop the constraint if it exists
     await queryRunner.query(`
-      DO $$
-      BEGIN
-        IF EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conname = 'UQ_habit_check_habitId_date'
-        ) THEN
-          ALTER TABLE "habit_check"
-          DROP CONSTRAINT "UQ_habit_check_habitId_date";
-        END IF;
-      END$$;
+      ALTER TABLE "habit_check"
+      DROP CONSTRAINT IF EXISTS "UQ_habit_check_habitId_date";
     `);
 
-    // Recreate the index if needed
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS "IDX_35be1df1e1741caca455fbf422"
-      ON "habit_check" ("date", "habitId");
+      ON "habit_check" ("date","habitId");
     `);
   }
 }
