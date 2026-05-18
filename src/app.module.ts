@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/users/user.module';
 import { HabitModule } from './modules/habits/habit.module';
 import { TaskModule } from './modules/tasks/tasks.module';
+import { getPostgresConnectionCore } from './database/connection-options';
 
 @Module({
   imports: [
@@ -14,15 +15,19 @@ import { TaskModule } from './modules/tasks/tasks.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get('DB_HOST', 'db'),
-        port: configService.get('DB_PORT', 5432),
-        username: configService.get('DB_USERNAME', 'postgres'),
-        password: configService.get('DB_PASSWORD', 'password'),
-        database: configService.get('DB_NAME', 'ai_notes'),
+      useFactory: (config: ConfigService) => ({
+        ...getPostgresConnectionCore({
+          DATABASE_URL: config.get<string>('DATABASE_URL'),
+          DB_HOST: config.get<string>('DB_HOST'),
+          DB_PORT: config.get<string>('DB_PORT'),
+          DB_USERNAME: config.get<string>('DB_USERNAME'),
+          DB_PASSWORD: config.get<string>('DB_PASSWORD'),
+          DB_NAME: config.get<string>('DB_NAME'),
+          DB_SSL: config.get<string>('DB_SSL'),
+          RUNNING_IN_DOCKER: config.get<string>('RUNNING_IN_DOCKER'),
+          NODE_ENV: config.get<string>('NODE_ENV'),
+        }),
         autoLoadEntities: true,
-        synchronize: false,
       }),
     }),
     AuthModule,
