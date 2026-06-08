@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "eamodio.gitlens",
+    "usernamehw.errorlens",
+    "yoavbls.pretty-ts-errors",
+    "ms-azuretools.vscode-docker",
+    "prisma.prisma",
+    "rangav.vscode-thunder-client",
+    "gruntfuggly.todo-tree"
+  ]
+}

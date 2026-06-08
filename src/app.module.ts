@@ -8,6 +8,7 @@ import { UserModule } from './modules/users/user.module';
 import { HabitModule } from './modules/habits/habit.module';
 import { TaskModule } from './modules/tasks/tasks.module';
 import { getPostgresConnectionCore } from './database/connection-options';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { getPostgresConnectionCore } from './database/connection-options';
     HabitModule,
     TaskModule,
   ],
-  controllers: [],
+  controllers: [AppController],
   providers: [],
 })
 export class AppModule {}
