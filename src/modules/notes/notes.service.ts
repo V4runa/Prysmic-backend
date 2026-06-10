@@ -36,12 +36,19 @@ export class NotesService {
     return this.notesRepository.save(note);
   }
 
-  // Get all notes for a specific user, newest first
-  async getNotesByUser(userId: number): Promise<Note[]> {
+  // Get notes for a specific user, newest first.
+  // limit/offset are optional; when omitted all notes are returned
+  // (preserves existing behaviour for callers that page client-side).
+  async getNotesByUser(
+    userId: number,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<Note[]> {
     return this.notesRepository.find({
       where: { userId },
-      relations: ["tags"], 
+      relations: ["tags"],
       order: { createdAt: "DESC" },
+      ...(options.limit !== undefined ? { take: options.limit } : {}),
+      ...(options.offset !== undefined ? { skip: options.offset } : {}),
     });
   }
 

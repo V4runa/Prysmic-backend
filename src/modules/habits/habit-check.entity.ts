@@ -19,6 +19,9 @@ export class HabitCheck {
   @JoinColumn({ name: 'habitId' })
   habit: Habit;
 
+  @Column()
+  habitId: number;
+
   @Column({ type: 'date' })
   date: string;
 
