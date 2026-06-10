@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TagsService } from '../tags/tags.service';
-import { NotesService } from '../notes/notes.service';
-import { HabitService } from '../habits/habit.service';
-import { TaskService } from '../tasks/tasks.service';
-import { TaskPriority } from '../tasks/tasks.entity';
-import { HabitFrequency } from '../../enums/habit-frequency.enum';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Tag } from '../tags/tags.entity';
+import { Note } from '../notes/notes.entity';
+import { Habit } from '../habits/habit.entity';
+import { Task, TaskPriority } from '../tasks/tasks.entity';
+import { User } from '../users/user.entity';
+import { HabitFrequency } from '../../enums/habit-frequency.enum';
 
 /**
  * Seeds a curated, on-brand starter workspace for a freshly registered user.
@@ -16,17 +17,19 @@ import { Tag } from '../tags/tags.entity';
  * the wanderer to reshape or clear them whenever they're ready.
  *
  * This is intentionally best-effort: a seeding failure must never block the
- * signup that triggered it, so the orchestrator swallows and logs errors.
+ * signup that triggered it, so the orchestrator swallows and logs errors. It
+ * writes through repositories directly to avoid coupling AuthModule to the
+ * feature modules (which would form a circular dependency).
  */
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
 
   constructor(
-    private readonly tagsService: TagsService,
-    private readonly notesService: NotesService,
-    private readonly habitService: HabitService,
-    private readonly taskService: TaskService,
+    @InjectRepository(Tag) private readonly tagRepo: Repository<Tag>,
+    @InjectRepository(Note) private readonly noteRepo: Repository<Note>,
+    @InjectRepository(Habit) private readonly habitRepo: Repository<Habit>,
+    @InjectRepository(Task) private readonly taskRepo: Repository<Task>,
   ) {}
 
   async seedSampleData(userId: number): Promise<void> {
@@ -44,6 +47,11 @@ export class OnboardingService {
     }
   }
 
+  private userRef(userId: number): User {
+    // Lightweight reference so TypeORM sets the FK without loading the row.
+    return { id: userId } as User;
+  }
+
   private async seedTags(userId: number): Promise<Record<string, Tag>> {
     const definitions: { key: string; name: string; color: string }[] = [
       { key: 'reflections', name: 'Reflections', color: 'cyan' },
@@ -55,11 +63,12 @@ export class OnboardingService {
     const tags: Record<string, Tag> = {};
     for (const def of definitions) {
       try {
-        tags[def.key] = await this.tagsService.createTag(
-          def.name,
-          def.color,
-          userId,
-        );
+        const tag = this.tagRepo.create({
+          name: def.name,
+          color: def.color,
+          user: this.userRef(userId),
+        });
+        tags[def.key] = await this.tagRepo.save(tag);
       } catch (err) {
         this.logger.warn(
           `Skipped seed tag "${def.name}" for user ${userId}: ${
@@ -75,55 +84,63 @@ export class OnboardingService {
     userId: number,
     tags: Record<string, Tag>,
   ): Promise<void> {
-    const startHere = await this.notesService.createNote(
-      '\u2726 Start Here',
-      START_HERE_CONTENT,
-      [tags.reflections].filter(Boolean) as Tag[],
-      userId,
-    );
+    const notes: {
+      title: string;
+      content: string;
+      tagKeys: string[];
+      isPinned?: boolean;
+    }[] = [
+      {
+        title: '\u2726 Start Here',
+        content: START_HERE_CONTENT,
+        tagKeys: ['reflections'],
+        isPinned: true,
+      },
+      {
+        title: 'A thought worth keeping',
+        content:
+          'The mind is for having ideas, not holding them. The moment a ' +
+          'thought feels worth keeping, give it a home here — then let it go ' +
+          'from your head.\n\nTry it now: edit this note, or tag it ' +
+          'differently. Nothing here is precious. It is yours to reshape.',
+        tagKeys: ['reflections'],
+      },
+      {
+        title: 'Ideas are fragile things',
+        content:
+          'Half-formed ideas evaporate if you wait for them to be perfect. ' +
+          'Capture the spark, not the finished flame.\n\nThis note is tagged ' +
+          '"Ideas" — visit the Tag Codex to see how tags let you filter the ' +
+          'noise down to a single thread of thought.',
+        tagKeys: ['ideas'],
+      },
+    ];
 
-    // Pin the welcome note so it greets the wanderer at the top of the grid.
-    try {
-      await this.notesService.updateNote(startHere.id, { isPinned: true });
-    } catch (err) {
-      this.logger.warn(
-        `Could not pin Start Here note for user ${userId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+    for (const def of notes) {
+      try {
+        const note = this.noteRepo.create({
+          title: def.title,
+          content: def.content,
+          userId,
+          user: this.userRef(userId),
+          isPinned: def.isPinned ?? false,
+          tags: def.tagKeys
+            .map((key) => tags[key])
+            .filter((t): t is Tag => Boolean(t)),
+        });
+        await this.noteRepo.save(note);
+      } catch (err) {
+        this.logger.warn(
+          `Skipped seed note "${def.title}" for user ${userId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
-
-    await this.notesService.createNote(
-      'A thought worth keeping',
-      'The mind is for having ideas, not holding them. The moment a thought ' +
-        'feels worth keeping, give it a home here — then let it go from your ' +
-        'head.\n\nTry it now: edit this note, or tag it differently. Nothing ' +
-        'here is precious. It is yours to reshape.',
-      [tags.reflections].filter(Boolean) as Tag[],
-      userId,
-    );
-
-    await this.notesService.createNote(
-      'Ideas are fragile things',
-      'Half-formed ideas evaporate if you wait for them to be perfect. ' +
-        'Capture the spark, not the finished flame.\n\nThis note is tagged ' +
-        '"Ideas" — visit the Tag Codex to see how tags let you filter the ' +
-        'noise down to a single thread of thought.',
-      [tags.ideas].filter(Boolean) as Tag[],
-      userId,
-    );
   }
 
   private async seedHabits(userId: number): Promise<void> {
-    const habits: {
-      name: string;
-      description?: string;
-      intent?: string;
-      affirmation?: string;
-      color: string;
-      icon: string;
-      frequency: HabitFrequency;
-    }[] = [
+    const habits: Partial<Habit>[] = [
       {
         name: 'Morning stillness',
         description: 'A few quiet minutes before the day asks anything of me.',
@@ -144,21 +161,24 @@ export class OnboardingService {
       },
       {
         name: 'Read before sleep',
-        description: 'Trade the glow of a screen for a few pages of something real.',
+        description:
+          'Trade the glow of a screen for a few pages of something real.',
         intent: 'End the day with wonder instead of noise.',
-        affirmation: 'I let my last thoughts of the day be chosen, not fed to me.',
+        affirmation:
+          'I let my last thoughts of the day be chosen, not fed to me.',
         color: 'violet',
         icon: 'book',
         frequency: HabitFrequency.DAILY,
       },
     ];
 
-    for (const habit of habits) {
+    for (const def of habits) {
       try {
-        await this.habitService.createHabit(userId, habit);
+        const habit = this.habitRepo.create({ ...def, userId });
+        await this.habitRepo.save(habit);
       } catch (err) {
         this.logger.warn(
-          `Skipped seed contract "${habit.name}" for user ${userId}: ${
+          `Skipped seed contract "${def.name}" for user ${userId}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
@@ -167,38 +187,42 @@ export class OnboardingService {
   }
 
   private async seedTasks(userId: number): Promise<void> {
-    const tasks: {
-      title: string;
-      description?: string;
-      priority: TaskPriority;
-    }[] = [
-      {
-        title: 'Make Prysmic yours — edit or delete these samples',
-        description:
-          'This whole starter set is just a demonstration. Change anything, ' +
-          'or clear it all out. The empty space that remains is the point.',
-        priority: TaskPriority.HIGH,
-      },
-      {
-        title: 'Capture one real thought today',
-        description: 'Open Notes and write a single line that is truly yours.',
-        priority: TaskPriority.MEDIUM,
-      },
-      {
-        title: 'Forge your first Contract',
-        description:
-          'Head to Contracts and commit to one small thing, daily. Watch the ' +
-          'streak grow.',
-        priority: TaskPriority.LOW,
-      },
-    ];
+    const tasks: { title: string; description: string; priority: TaskPriority }[] =
+      [
+        {
+          title: 'Make Prysmic yours — edit or delete these samples',
+          description:
+            'This whole starter set is just a demonstration. Change anything, ' +
+            'or clear it all out. The empty space that remains is the point.',
+          priority: TaskPriority.HIGH,
+        },
+        {
+          title: 'Capture one real thought today',
+          description: 'Open Notes and write a single line that is truly yours.',
+          priority: TaskPriority.MEDIUM,
+        },
+        {
+          title: 'Forge your first Contract',
+          description:
+            'Head to Contracts and commit to one small thing, daily. Watch ' +
+            'the streak grow.',
+          priority: TaskPriority.LOW,
+        },
+      ];
 
-    for (const task of tasks) {
+    for (const def of tasks) {
       try {
-        await this.taskService.create(userId, task);
+        const task = this.taskRepo.create({
+          title: def.title,
+          description: def.description,
+          priority: def.priority,
+          userId,
+          user: this.userRef(userId),
+        });
+        await this.taskRepo.save(task);
       } catch (err) {
         this.logger.warn(
-          `Skipped seed task "${task.title}" for user ${userId}: ${
+          `Skipped seed task "${def.title}" for user ${userId}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
