@@ -80,9 +80,9 @@ export class TaskService {
   
 
   async findOne(userId: number, id: number): Promise<Task> {
-    const task = await this.taskRepo.findOne({ where: { id }, relations: ['user'] });
+    const task = await this.taskRepo.findOne({ where: { id } });
     if (!task) throw new NotFoundException('Task not found');
-    if (task.user.id !== userId) throw new ForbiddenException();
+    if (task.userId !== userId) throw new ForbiddenException();
     return task;
   }
 

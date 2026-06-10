@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Habit } from './habit.entity';
 import { HabitCheck } from './habit-check.entity';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
@@ -96,41 +96,34 @@ export class HabitService {
     return this.habitRepo.save(habit);
   }
 
-  async getHabits(userId: number) {
-    const habits = await this.habitRepo.find({
-      where: { userId, isActive: true },
-      relations: ['checks'],
-      order: { createdAt: 'DESC' },
+  // Load only the check dates for the given habits, grouped by habitId.
+  // Avoids hydrating full HabitCheck entities and duplicating habit columns
+  // across the join, while keeping the date transformer (YYYY-MM-DD strings).
+  private async getCheckDatesByHabit(
+    habitIds: number[],
+  ): Promise<Map<number, string[]>> {
+    const grouped = new Map<number, string[]>();
+    if (habitIds.length === 0) return grouped;
+
+    const checks = await this.checkRepo.find({
+      where: { habitId: In(habitIds) },
+      select: { habitId: true, date: true },
     });
 
-    return habits.map((h) => {
-      const dates = (h.checks ?? []).map((c) => c.date);
-      const s = computeStreaks(dates);
+    for (const check of checks) {
+      const dates = grouped.get(check.habitId);
+      if (dates) {
+        dates.push(check.date);
+      } else {
+        grouped.set(check.habitId, [check.date]);
+      }
+    }
 
-      return {
-        ...h,
-        checkedToday: s.checkedToday,
-        currentStreak: s.currentStreak,
-        longestStreak: s.longestStreak,
-      } as Habit & {
-        checkedToday: boolean;
-        currentStreak: number;
-        longestStreak: number;
-      };
-    });
+    return grouped;
   }
 
-  async getHabitById(habitId: number, userId: number) {
-    const habit = await this.habitRepo.findOne({
-      where: { id: habitId, userId },
-      relations: ['checks'],
-    });
-    if (!habit)
-      throw new NotFoundException('Habit not found or you do not have access.');
-
-    const dates = (habit.checks ?? []).map((c) => c.date);
+  private withStreaks(habit: Habit, dates: string[]) {
     const s = computeStreaks(dates);
-
     return {
       ...habit,
       checkedToday: s.checkedToday,
@@ -141,6 +134,37 @@ export class HabitService {
       currentStreak: number;
       longestStreak: number;
     };
+  }
+
+  async getHabits(userId: number) {
+    const habits = await this.habitRepo.find({
+      where: { userId, isActive: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    const datesByHabit = await this.getCheckDatesByHabit(
+      habits.map((h) => h.id),
+    );
+
+    return habits.map((h) => this.withStreaks(h, datesByHabit.get(h.id) ?? []));
+  }
+
+  async getHabitById(habitId: number, userId: number) {
+    const habit = await this.habitRepo.findOne({
+      where: { id: habitId, userId },
+    });
+    if (!habit)
+      throw new NotFoundException('Habit not found or you do not have access.');
+
+    const dates = await this.checkRepo.find({
+      where: { habitId },
+      select: { date: true },
+    });
+
+    return this.withStreaks(
+      habit,
+      dates.map((d) => d.date),
+    );
   }
 
   async updateHabit(habitId: number, userId: number, dto: UpdateHabitDto) {
@@ -175,24 +199,25 @@ export class HabitService {
   async toggleCheck(habitId: number, userId: number) {
     const habit = await this.habitRepo.findOne({
       where: { id: habitId, userId },
-      relations: ['checks'],
     });
     if (!habit) throw new NotFoundException('Habit not found');
 
     const today = todayWithCutoff(3);
 
     const existing = await this.checkRepo.findOne({
-      where: { habit: { id: habit.id }, date: today },
-      relations: ['habit'],
+      where: { habitId: habit.id, date: today },
     });
 
     if (existing) {
       await this.checkRepo.remove(existing);
-      return { checked: false };
+    } else {
+      await this.checkRepo.save(
+        this.checkRepo.create({ habitId: habit.id, date: today }),
+      );
     }
 
-    const newCheck = this.checkRepo.create({ habit, date: today });
-    await this.checkRepo.save(newCheck);
-    return { checked: true };
+    // Return the full updated habit (with recomputed streaks) so the client
+    // does not need a follow-up GET request.
+    return this.getHabitById(habitId, userId);
   }
 }

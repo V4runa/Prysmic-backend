@@ -25,22 +25,22 @@ export class UserService {
 
     // Find a user by email
     async findByEmail(email: string): Promise<User | null> {
-        return this.userRepository.findOne({ where: { email }, relations: ['notes'] });
+        return this.userRepository.findOne({ where: { email } });
     }
 
     // Find a user by username
     async findByUsername(username: string): Promise<User | null> {
-        return this.userRepository.findOne({ where: { username }, relations: ['notes'] });
+        return this.userRepository.findOne({ where: { username } });
     }
 
     // Get all users
     async findAll(): Promise<User[]> {
-        return this.userRepository.find({ relations: ['notes'] });
+        return this.userRepository.find();
     } 
 
     // Get a user by ID
     async findById(id: number): Promise<User | null> {
-        return this.userRepository.findOne({ where: { id }, relations: ['notes'] });
+        return this.userRepository.findOne({ where: { id } });
     } 
     
    // Update a user
@@ -65,7 +65,7 @@ export class UserService {
    // Delete a user
 
 async remove(id: number): Promise<void> {
-  const user = await this.userRepository.findOne({ where: { id }, relations: ['notes'] });
+  const user = await this.userRepository.findOne({ where: { id } });
   if (!user) {
     throw new NotFoundException('User not found');
   }

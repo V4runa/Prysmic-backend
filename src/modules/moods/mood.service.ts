@@ -75,12 +75,18 @@ export class MoodService {
   }
 
   /**
-   * Get all moods for the user (no limit)
+   * Get moods for the user, newest first.
+   * limit/offset are optional; when omitted all moods are returned.
    */
-  async getAll(userId: number): Promise<Mood[]> {
+  async getAll(
+    userId: number,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<Mood[]> {
     return this.moodRepository.find({
       where: { user: { id: userId } },
       order: { createdAt: 'DESC' },
+      ...(options.limit !== undefined ? { take: options.limit } : {}),
+      ...(options.offset !== undefined ? { skip: options.offset } : {}),
     });
   }
 

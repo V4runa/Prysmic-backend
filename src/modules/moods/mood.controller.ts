@@ -6,6 +6,7 @@ import {
   Post,
   Body,
   Req,
+  Query,
   UseGuards,
   HttpCode,
   Delete,
@@ -53,9 +54,16 @@ export class MoodController {
    * Get all moods (for dev/debug or full analytics use)
    */
   @Get()
-  getAll(@Req() req: Request) {
+  getAll(
+    @Req() req: Request,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
     const userId = (req.user as { userId: number }).userId;
-    return this.moodService.getAll(userId);
+    return this.moodService.getAll(userId, {
+      limit: limit !== undefined ? Number(limit) : undefined,
+      offset: offset !== undefined ? Number(offset) : undefined,
+    });
   }
 
   /**

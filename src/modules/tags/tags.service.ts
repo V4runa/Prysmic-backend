@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Tag } from './tags.entity';
 import { UserService } from '../users/user.service';
 
@@ -37,14 +37,20 @@ export class TagsService {
 
   // Get all tags for a specific user
   async getAllTags(userId: number): Promise<Tag[]> {
-    const user = await this.userService.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
     return this.tagsRepository.find({
       where: { user: { id: userId } },
       order: { name: 'ASC' },
+    });
+  }
+
+  // Get specific tags by ID, scoped to the owning user
+  async getTagsByIds(ids: number[], userId: number): Promise<Tag[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    return this.tagsRepository.find({
+      where: { id: In(ids), user: { id: userId } },
     });
   }
 
@@ -65,14 +71,19 @@ export class TagsService {
   async deleteTag(id: number, userId: number): Promise<void> {
     const tag = await this.tagsRepository.findOne({
       where: { id, user: { id: userId } },
-      relations: ['notes'],
     });
 
     if (!tag) {
       throw new NotFoundException('Tag not found or not owned by user');
     }
 
-    if (tag.notes.length > 0) {
+    const linkedNotesCount = await this.tagsRepository
+      .createQueryBuilder('tag')
+      .innerJoin('tag.notes', 'note')
+      .where('tag.id = :id', { id })
+      .getCount();
+
+    if (linkedNotesCount > 0) {
       throw new Error('Cannot delete tag as it is associated with notes');
     }
 

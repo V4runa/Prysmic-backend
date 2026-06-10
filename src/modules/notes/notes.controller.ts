@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Req,
   BadRequestException,
@@ -35,8 +36,7 @@ export class NotesController {
     const { title, content, tagIds = [] } = createNoteDto;
     const userId = req.user.userId;
 
-    const tags = await this.tagsService.getAllTags(userId);
-    const noteTags = tags.filter((tag) => tagIds.includes(tag.id));
+    const noteTags = await this.tagsService.getTagsByIds(tagIds, userId);
 
     if (noteTags.length !== tagIds.length) {
       throw new BadRequestException('Some of the provided tag IDs do not exist');
@@ -45,11 +45,18 @@ export class NotesController {
     return this.notesService.createNote(title, content, noteTags, userId);
   }
 
-  // Get all notes for a user
+  // Get all notes for a user (optional limit/offset for pagination)
   @Get('user/:userId')
   @UseGuards(JwtAuthGuard)
-  async getNotesByUser(@Param('userId', ParseIntPipe) userId: number) {
-    return this.notesService.getNotesByUser(userId);
+  async getNotesByUser(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.notesService.getNotesByUser(userId, {
+      limit: limit !== undefined ? Number(limit) : undefined,
+      offset: offset !== undefined ? Number(offset) : undefined,
+    });
   }
 
   // Get a single note by ID
@@ -70,10 +77,9 @@ export class NotesController {
   ): Promise<Note> {
     const userId = req.user.userId;
 
-    const tags = await this.tagsService.getAllTags(userId);
-    const noteTags = tags.filter((tag) => tagIds.includes(tag.id));
+    const noteTags = await this.tagsService.getTagsByIds(tagIds ?? [], userId);
 
-    if (noteTags.length !== tagIds.length) {
+    if (noteTags.length !== (tagIds?.length ?? 0)) {
       throw new BadRequestException('Some of the provided tag IDs do not exist');
     }
 
