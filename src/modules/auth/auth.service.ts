@@ -7,12 +7,14 @@ import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../users/user.service';
 import * as bcrypt from 'bcrypt';
 import { SignupDto, LoginDto } from 'src/dtos/auth';
+import { OnboardingService } from '../onboarding/onboarding.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
+    private readonly onboardingService: OnboardingService,
   ) {}
 
   async validateUser(identifier: string, password: string): Promise<any> {
@@ -43,6 +45,11 @@ export class AuthService {
       email,
       password: hashedPassword,
     });
+
+    // Greet the new wanderer with a curated, on-brand starter workspace.
+    // Best-effort: seeding never blocks issuing the access token.
+    await this.onboardingService.seedSampleData(user.id);
+
     const payload = {
       sub: user.id,
       username: user.username,
