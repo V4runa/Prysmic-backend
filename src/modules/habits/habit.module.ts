@@ -13,6 +13,5 @@ import { UserModule } from '../users/user.module';
   ],
   providers: [HabitService],
   controllers: [HabitController],
-  exports: [HabitService],
 })
 export class HabitModule {}
