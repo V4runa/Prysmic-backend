@@ -1,6 +1,13 @@
 // src/dtos/create-mood.dto.ts
 
-import { IsString, IsNotEmpty, MaxLength, IsIn, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  MaxLength,
+  IsIn,
+  IsOptional,
+  Matches,
+} from 'class-validator';
 
 export const ALLOWED_MOOD_TYPES = [
   'joyful', 'calm', 'focused', 'tired', 'anxious',
@@ -22,4 +29,13 @@ export class CreateMoodDto {
   @IsString()
   @MaxLength(280, { message: 'Note must be 280 characters or fewer.' })
   note?: string;
+
+  // The client's local calendar date (YYYY-MM-DD) so "today" buckets by the
+  // user's timezone. Falls back to the server day when absent.
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'date must be in YYYY-MM-DD format',
+  })
+  date?: string;
 }
