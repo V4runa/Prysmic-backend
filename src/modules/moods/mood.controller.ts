@@ -26,9 +26,9 @@ export class MoodController {
    * Get the user's mood for today
    */
   @Get('today')
-  getToday(@Req() req: Request) {
+  getToday(@Req() req: Request, @Query('today') today?: string) {
     const userId = (req.user as { userId: number }).userId;
-    return this.moodService.getToday(userId);
+    return this.moodService.getToday(userId, today);
   }
 
   /**

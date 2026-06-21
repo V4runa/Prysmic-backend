@@ -23,6 +23,12 @@ export class Mood {
   @Column({ type: 'text', nullable: true })
   note?: string;
 
+  // The user's local calendar day (YYYY-MM-DD) this mood belongs to. Stored
+  // separately from createdAt so "one mood per day" buckets by the user's
+  // timezone rather than the server's UTC clock.
+  @Column({ type: 'date' })
+  date: string;
+
   @CreateDateColumn()
   createdAt: Date;
 
