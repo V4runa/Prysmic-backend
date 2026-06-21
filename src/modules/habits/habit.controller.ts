@@ -6,6 +6,7 @@ import {
   Put,
   Param,
   Body,
+  Query,
   UseGuards,
   Request,
   ParseIntPipe,
@@ -14,6 +15,7 @@ import { HabitService } from './habit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
 import { UpdateHabitDto } from '../../dtos/update-habit.dto';
+import { CheckHabitDto } from '../../dtos/check-habit.dto';
 
 @Controller('habits')
 @UseGuards(JwtAuthGuard)
@@ -26,13 +28,17 @@ export class HabitController {
   }
 
   @Get()
-  getAll(@Request() req) {
-    return this.habitService.getHabits(req.user.userId);
+  getAll(@Request() req, @Query('today') today?: string) {
+    return this.habitService.getHabits(req.user.userId, today);
   }
 
   @Get(':id')
-  getOne(@Request() req, @Param('id', ParseIntPipe) id: number) {
-    return this.habitService.getHabitById(id, req.user.userId);
+  getOne(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('today') today?: string,
+  ) {
+    return this.habitService.getHabitById(id, req.user.userId, today);
   }
 
   @Put(':id')
@@ -46,7 +52,11 @@ export class HabitController {
   }
 
   @Post(':id/check')
-  toggleCheck(@Request() req, @Param('id', ParseIntPipe) id: number) {
-    return this.habitService.toggleCheck(id, req.user.userId);
+  toggleCheck(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CheckHabitDto,
+  ) {
+    return this.habitService.toggleCheck(id, req.user.userId, dto.date);
   }
 }
