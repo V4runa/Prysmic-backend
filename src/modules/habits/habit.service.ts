@@ -14,10 +14,24 @@ function parseFrequency(value?: string): HabitFrequency {
   return HabitFrequency.DAILY;
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Fallback "today" when the client does not supply its local date. Uses a 3h
+// cutoff so very-early-morning check-ins still count toward the previous day.
+// This is UTC-based and only a fallback; the client's local date is preferred.
 function todayWithCutoff(cutoffHour = 3): string {
   const now = new Date();
   const shifted = new Date(now.getTime() - cutoffHour * 60 * 60 * 1000);
   return shifted.toISOString().slice(0, 10);
+}
+
+// Prefer the caller's local calendar date so the streak day boundary matches
+// the user's timezone. Falls back to the server cutoff if missing/invalid.
+function resolveToday(clientDate?: string): string {
+  if (clientDate && ISO_DATE.test(clientDate)) {
+    return clientDate;
+  }
+  return todayWithCutoff(3);
 }
 
 function isoDateToEpoch(d: string): number {
@@ -33,7 +47,10 @@ function prevDay(d: string): string {
   return epochToIsoDate(isoDateToEpoch(d) - 24 * 60 * 60 * 1000);
 }
 
-function computeStreaks(dates: string[], cutoffHour = 3): {
+function computeStreaks(
+  dates: string[],
+  today: string,
+): {
   currentStreak: number;
   longestStreak: number;
   checkedToday: boolean;
@@ -42,7 +59,6 @@ function computeStreaks(dates: string[], cutoffHour = 3): {
     return { currentStreak: 0, longestStreak: 0, checkedToday: false };
   }
 
-  const today = todayWithCutoff(cutoffHour);
   const set = new Set(dates);
 
   const checkedToday = set.has(today);
@@ -122,8 +138,8 @@ export class HabitService {
     return grouped;
   }
 
-  private withStreaks(habit: Habit, dates: string[]) {
-    const s = computeStreaks(dates);
+  private withStreaks(habit: Habit, dates: string[], today: string) {
+    const s = computeStreaks(dates, today);
     return {
       ...habit,
       checkedToday: s.checkedToday,
@@ -136,7 +152,8 @@ export class HabitService {
     };
   }
 
-  async getHabits(userId: number) {
+  async getHabits(userId: number, clientToday?: string) {
+    const today = resolveToday(clientToday);
     const habits = await this.habitRepo.find({
       where: { userId, isActive: true },
       order: { createdAt: 'DESC' },
@@ -146,10 +163,13 @@ export class HabitService {
       habits.map((h) => h.id),
     );
 
-    return habits.map((h) => this.withStreaks(h, datesByHabit.get(h.id) ?? []));
+    return habits.map((h) =>
+      this.withStreaks(h, datesByHabit.get(h.id) ?? [], today),
+    );
   }
 
-  async getHabitById(habitId: number, userId: number) {
+  async getHabitById(habitId: number, userId: number, clientToday?: string) {
+    const today = resolveToday(clientToday);
     const habit = await this.habitRepo.findOne({
       where: { id: habitId, userId },
     });
@@ -164,6 +184,7 @@ export class HabitService {
     return this.withStreaks(
       habit,
       dates.map((d) => d.date),
+      today,
     );
   }
 
@@ -196,13 +217,13 @@ export class HabitService {
     return this.habitRepo.save(habit);
   }
 
-  async toggleCheck(habitId: number, userId: number) {
+  async toggleCheck(habitId: number, userId: number, clientToday?: string) {
     const habit = await this.habitRepo.findOne({
       where: { id: habitId, userId },
     });
     if (!habit) throw new NotFoundException('Habit not found');
 
-    const today = todayWithCutoff(3);
+    const today = resolveToday(clientToday);
 
     const existing = await this.checkRepo.findOne({
       where: { habitId: habit.id, date: today },
@@ -218,6 +239,6 @@ export class HabitService {
 
     // Return the full updated habit (with recomputed streaks) so the client
     // does not need a follow-up GET request.
-    return this.getHabitById(habitId, userId);
+    return this.getHabitById(habitId, userId, today);
   }
 }
