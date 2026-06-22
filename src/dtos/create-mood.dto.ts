@@ -4,26 +4,29 @@ import {
   IsString,
   IsNotEmpty,
   MaxLength,
-  IsIn,
   IsOptional,
   Matches,
 } from 'class-validator';
 
-export const ALLOWED_MOOD_TYPES = [
-  'joyful', 'calm', 'focused', 'tired', 'anxious',
-  'inspired', 'grateful', 'lonely', 'angry', 'hopeful',
-] as const;
-
 export class CreateMoodDto {
+  // The chosen mood's label (a default like "Joyful" or a user-created mood).
+  // No longer restricted to a fixed list now that moods are customizable.
   @IsString()
   @IsNotEmpty()
-  @IsIn(ALLOWED_MOOD_TYPES as unknown as string[], { message: 'Invalid moodType' })
+  @MaxLength(40, { message: 'Mood name must be 40 characters or fewer.' })
   moodType: string;
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(10, { message: 'Emoji must be 10 characters or fewer.' })
+  @MaxLength(16, { message: 'Emoji must be 16 characters or fewer.' })
   emoji: string;
+
+  // Palette color token snapshot (e.g. "amber"). Optional for resilience with
+  // older clients; the UI falls back to a default color when absent.
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  color?: string;
 
   @IsOptional()
   @IsString()

@@ -49,6 +49,7 @@ export class MoodService {
       existing.emoji = dto.emoji;
       if (dto.note !== undefined) existing.note = dto.note;
       if (dto.moodType !== undefined) existing.moodType = dto.moodType;
+      if (dto.color !== undefined) existing.color = dto.color;
       return this.moodRepository.save(existing);
     }
 
@@ -57,6 +58,7 @@ export class MoodService {
       date: day,
       ...(dto.note !== undefined ? { note: dto.note } : {}),
       ...(dto.moodType !== undefined ? { moodType: dto.moodType } : {}),
+      ...(dto.color !== undefined ? { color: dto.color } : {}),
       user: { id: userId } as any,
     });
 
