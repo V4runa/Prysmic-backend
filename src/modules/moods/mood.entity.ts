@@ -14,11 +14,18 @@ export class Mood {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'varchar', length: 24 })
+  // Snapshot of the chosen mood's label at save time (e.g. "Joyful" or a custom
+  // name). Widened to fit custom labels; history is never rewritten on edits.
+  @Column({ type: 'varchar', length: 40 })
   moodType: string;
 
-  @Column({ type: 'varchar', length: 10 })
+  @Column({ type: 'varchar', length: 16 })
   emoji: string;
+
+  // Snapshot of the chosen mood's palette color token. Nullable for legacy
+  // entries created before custom moods (resolved via a fallback on the client).
+  @Column({ type: 'varchar', length: 24, nullable: true })
+  color?: string;
 
   @Column({ type: 'text', nullable: true })
   note?: string;

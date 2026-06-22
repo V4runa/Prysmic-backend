@@ -9,6 +9,7 @@ import { Habit } from './modules/habits/habit.entity';
 import { HabitCheck } from './modules/habits/habit-check.entity';
 import { Task } from './modules/tasks/tasks.entity';
 import { Mood } from './modules/moods/mood.entity';
+import { MoodOption } from './modules/moods/mood-option.entity';
 import {
   getPostgresConnectionCore,
   type DbEnv,
@@ -19,7 +20,7 @@ const isCompiled = __dirname.includes('dist');
 export const dataSourceOptions: DataSourceOptions = {
   ...getPostgresConnectionCore(process.env as DbEnv),
 
-  entities: [Note, Tag, User, Habit, HabitCheck, Task, Mood],
+  entities: [Note, Tag, User, Habit, HabitCheck, Task, Mood, MoodOption],
   migrations: [isCompiled ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
 };
 

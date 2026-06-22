@@ -11,6 +11,7 @@ import { Tag } from '../tags/tags.entity';
 import { Habit } from '../habits/habit.entity';
 import { Task } from '../tasks/tasks.entity';
 import { Mood } from '../moods/mood.entity';
+import { MoodOption } from '../moods/mood-option.entity';
 
 @Entity('users')
 export class User {
@@ -50,4 +51,7 @@ export class User {
 
   @OneToMany(() => Mood, (mood) => mood.user)
   moods: Mood[];
+
+  @OneToMany(() => MoodOption, (option) => option.user)
+  moodOptions: MoodOption[];
 }
