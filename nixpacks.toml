@@ -1,8 +1,10 @@
 [phases.setup]
 nixPkgs = ["nodejs_20"]
 
+# Force devDependencies even when Railway sets NODE_ENV=production, otherwise
+# npm omits them and the `nest` CLI (a devDependency) is missing at build time.
 [phases.install]
-cmds = ["npm install"]
+cmds = ["npm install --include=dev"]
 
 [phases.build]
 cmds = ["npm run build"]
