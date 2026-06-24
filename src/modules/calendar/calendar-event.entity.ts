@@ -66,7 +66,7 @@ export class CalendarEvent {
   @Column({ default: 'cyan' })
   color: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   location?: string | null;
 
   @Column({
