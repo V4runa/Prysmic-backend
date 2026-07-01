@@ -43,13 +43,17 @@ export class NotesService {
     userId: number,
     options: { limit?: number; offset?: number } = {},
   ): Promise<Note[]> {
-    return this.notesRepository.find({
-      where: { userId },
-      relations: ["tags"],
-      order: { createdAt: "DESC" },
-      ...(options.limit !== undefined ? { take: options.limit } : {}),
-      ...(options.offset !== undefined ? { skip: options.offset } : {}),
-    });
+    const qb = this.notesRepository
+      .createQueryBuilder("note")
+      .leftJoinAndSelect("note.tags", "tags")
+      .loadRelationCountAndMap("note.attachmentCount", "note.attachments")
+      .where("note.userId = :userId", { userId })
+      .orderBy("note.createdAt", "DESC");
+
+    if (options.limit !== undefined) qb.take(options.limit);
+    if (options.offset !== undefined) qb.skip(options.offset);
+
+    return qb.getMany();
   }
 
   // Get all notes
