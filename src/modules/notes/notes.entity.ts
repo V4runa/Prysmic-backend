@@ -13,6 +13,7 @@ import {
 import { Tag } from '../tags/tags.entity';
 import { User } from '../users/user.entity';
 import { Habit } from '../habits/habit.entity';
+import { NoteAttachment } from './note-attachment.entity';
 
 @Entity('notes')
 export class Note {
@@ -53,4 +54,10 @@ export class Note {
 
   @OneToMany(() => Habit, (habit) => habit.originNote)
   habitsThatOriginatedHere: Habit[];
+
+  @OneToMany(() => NoteAttachment, (attachment) => attachment.note)
+  attachments: NoteAttachment[];
+
+  /** Populated on list reads via loadRelationCountAndMap; not a real column. */
+  attachmentCount?: number;
 }

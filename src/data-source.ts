@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 config();
 
 import { Note } from './modules/notes/notes.entity';
+import { NoteAttachment } from './modules/notes/note-attachment.entity';
 import { Tag } from './modules/tags/tags.entity';
 import { User } from './modules/users/user.entity';
 import { Habit } from './modules/habits/habit.entity';
@@ -21,7 +22,7 @@ const isCompiled = __dirname.includes('dist');
 export const dataSourceOptions: DataSourceOptions = {
   ...getPostgresConnectionCore(process.env as DbEnv),
 
-  entities: [Note, Tag, User, Habit, HabitCheck, Task, Mood, MoodOption, CalendarEvent],
+  entities: [Note, NoteAttachment, Tag, User, Habit, HabitCheck, Task, Mood, MoodOption, CalendarEvent],
   migrations: [isCompiled ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
 };
 
