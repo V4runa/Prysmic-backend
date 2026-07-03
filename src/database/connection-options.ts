@@ -61,6 +61,16 @@ export function getPostgresConnectionCore(env: DbEnv): DataSourceOptions {
     synchronize: false,
     logging: env.NODE_ENV !== 'production',
     ssl: enableSSL ? { rejectUnauthorized: false } : false,
+    // Pool + timeout tuning for a managed host (Railway/Render). Without these,
+    // node-postgres uses defaults with no connect timeout, so a cold DB or a
+    // hiccup can hang the first request indefinitely. keepAlive avoids the pool
+    // silently dropping idle sockets between bursts of traffic.
+    extra: {
+      max: 10,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+      keepAlive: true,
+    },
   };
 
   if (useUrl) {

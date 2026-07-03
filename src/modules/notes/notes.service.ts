@@ -5,6 +5,19 @@ import { Note } from "./notes.entity";
 import { Tag } from "../tags/tags.entity";
 import { UserService } from "../users/user.service";
 
+// Notes are stored as HTML and can grow large. The list view only renders a
+// short text preview, so we ship a trimmed body instead of the full note to
+// keep the payload (and the cross-network transfer to the browser) small. The
+// single-note endpoint still returns the complete content.
+const NOTE_PREVIEW_LIMIT = 600;
+function truncateNotePreview(content: string | null | undefined): string {
+  if (!content) return "";
+  if (content.length <= NOTE_PREVIEW_LIMIT) return content;
+  // Drop any dangling partial tag left by the cut so the client's HTML
+  // stripper doesn't choke on `<div` with no closing bracket.
+  return content.slice(0, NOTE_PREVIEW_LIMIT).replace(/<[^>]*$/, "");
+}
+
 @Injectable()
 export class NotesService {
   constructor(
@@ -53,7 +66,11 @@ export class NotesService {
     if (options.limit !== undefined) qb.take(options.limit);
     if (options.offset !== undefined) qb.skip(options.offset);
 
-    return qb.getMany();
+    const notes = await qb.getMany();
+    for (const note of notes) {
+      note.content = truncateNotePreview(note.content);
+    }
+    return notes;
   }
 
   // Get all notes

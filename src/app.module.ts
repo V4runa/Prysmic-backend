@@ -8,6 +8,7 @@ import { UserModule } from './modules/users/user.module';
 import { HabitModule } from './modules/habits/habit.module';
 import { TaskModule } from './modules/tasks/tasks.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { MoodModule } from './modules/moods/mood.module';
 import { getPostgresConnectionCore } from './database/connection-options';
 import { AppController } from './app.controller';
 
@@ -39,6 +40,7 @@ import { AppController } from './app.controller';
     HabitModule,
     TaskModule,
     CalendarModule,
+    MoodModule,
   ],
   controllers: [AppController],
   providers: [],
