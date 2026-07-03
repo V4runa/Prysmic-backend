@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { Habit } from './habit.entity';
 import { HabitCheck } from './habit-check.entity';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
@@ -41,6 +41,18 @@ function isoDateToEpoch(d: string): number {
 function epochToIsoDate(t: number): string {
   const d = new Date(t);
   return d.toISOString().slice(0, 10);
+}
+
+// Only load check-ins from a rolling window instead of a habit's entire
+// history. Without this the query + in-memory sort grow unbounded for the life
+// of the account. 400 days comfortably covers the current streak and the
+// longest streak for realistic usage (streaks longer than ~13 months are
+// truncated to the window, an acceptable trade-off for a personal app).
+const STREAK_WINDOW_DAYS = 400;
+function windowStartDate(today: string): string {
+  return epochToIsoDate(
+    isoDateToEpoch(today) - STREAK_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
 }
 
 function prevDay(d: string): string {
@@ -117,12 +129,16 @@ export class HabitService {
   // across the join, while keeping the date transformer (YYYY-MM-DD strings).
   private async getCheckDatesByHabit(
     habitIds: number[],
+    since?: string,
   ): Promise<Map<number, string[]>> {
     const grouped = new Map<number, string[]>();
     if (habitIds.length === 0) return grouped;
 
     const checks = await this.checkRepo.find({
-      where: { habitId: In(habitIds) },
+      where: {
+        habitId: In(habitIds),
+        ...(since ? { date: MoreThanOrEqual(since) } : {}),
+      },
       select: { habitId: true, date: true },
     });
 
@@ -161,6 +177,7 @@ export class HabitService {
 
     const datesByHabit = await this.getCheckDatesByHabit(
       habits.map((h) => h.id),
+      windowStartDate(today),
     );
 
     return habits.map((h) =>
@@ -177,7 +194,7 @@ export class HabitService {
       throw new NotFoundException('Habit not found or you do not have access.');
 
     const dates = await this.checkRepo.find({
-      where: { habitId },
+      where: { habitId, date: MoreThanOrEqual(windowStartDate(today)) },
       select: { date: true },
     });
 

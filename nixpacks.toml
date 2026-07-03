@@ -9,5 +9,8 @@ cmds = ["npm install --include=dev"]
 [phases.build]
 cmds = ["npm run build"]
 
+# Migrations run in Railway's preDeployCommand (see railway.json), NOT here —
+# so ordinary container restarts / wakes boot straight into the app instead of
+# re-running the TypeORM CLI against the DB every time.
 [start]
-cmd = "npm run start:migrate"
+cmd = "npm run start:prod"
