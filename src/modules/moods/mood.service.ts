@@ -46,6 +46,9 @@ export class MoodService {
     });
 
     if (existing) {
+      // Editing an existing day never re-classifies it: a day that already
+      // counted toward a streak must not silently drop out (or vice versa) just
+      // because the user tweaked the emoji/note later via the calendar.
       existing.emoji = dto.emoji;
       if (dto.note !== undefined) existing.note = dto.note;
       if (dto.moodType !== undefined) existing.moodType = dto.moodType;
@@ -56,6 +59,7 @@ export class MoodService {
     const mood = this.moodRepository.create({
       emoji: dto.emoji,
       date: day,
+      backfilled: dto.backfilled ?? false,
       ...(dto.note !== undefined ? { note: dto.note } : {}),
       ...(dto.moodType !== undefined ? { moodType: dto.moodType } : {}),
       ...(dto.color !== undefined ? { color: dto.color } : {}),
@@ -111,16 +115,20 @@ export class MoodService {
 
   /**
    * Prefer the client's local calendar day so buckets match the user's
-   * timezone. Falls back to the server's current day when missing/invalid.
+   * timezone. Falls back to the server's current day (with a 6h grace window so
+   * late-night entries still land on the day that just ended) when the client
+   * date is missing/invalid.
    */
   private resolveDay(clientDate?: string): string {
     if (clientDate && ISO_DATE.test(clientDate)) {
       return clientDate;
     }
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    // Shift back 6 hours before reading the calendar day, mirroring the client's
+    // `logicalToday()` grace boundary.
+    const shifted = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const year = shifted.getFullYear();
+    const month = String(shifted.getMonth() + 1).padStart(2, '0');
+    const day = String(shifted.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
 }

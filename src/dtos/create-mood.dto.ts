@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   MaxLength,
   IsOptional,
+  IsBoolean,
   Matches,
 } from 'class-validator';
 
@@ -41,4 +42,11 @@ export class CreateMoodDto {
     message: 'date must be in YYYY-MM-DD format',
   })
   date?: string;
+
+  // Set by the client when the entry is added retroactively (e.g. a past day via
+  // the calendar) so it can be excluded from streak counts. Only honoured when
+  // creating a new entry; edits to an existing day never change this flag.
+  @IsOptional()
+  @IsBoolean()
+  backfilled?: boolean;
 }

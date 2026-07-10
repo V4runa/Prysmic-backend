@@ -36,6 +36,12 @@ export class Mood {
   @Column({ type: 'date' })
   date: string;
 
+  // True when the entry was added retroactively (e.g. filling in a past day via
+  // the calendar). Backfilled moods still appear on the timeline/calendar but are
+  // excluded from streak counts so backfilling can't manufacture a streak.
+  @Column({ type: 'boolean', default: false })
+  backfilled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

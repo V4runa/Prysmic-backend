@@ -403,7 +403,9 @@ export class CalendarService {
       moodType: m.moodType,
       emoji: m.emoji,
       color: m.color ?? null,
+      note: m.note ?? null,
       date: m.date,
+      backfilled: m.backfilled ?? false,
     }));
   }
 
