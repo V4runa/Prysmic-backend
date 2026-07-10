@@ -16,10 +16,11 @@ function parseFrequency(value?: string): HabitFrequency {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// Fallback "today" when the client does not supply its local date. Uses a 3h
-// cutoff so very-early-morning check-ins still count toward the previous day.
-// This is UTC-based and only a fallback; the client's local date is preferred.
-function todayWithCutoff(cutoffHour = 3): string {
+// Fallback "today" when the client does not supply its local date. Uses a 6h
+// cutoff so late-night check-ins (up to 6am) still count toward the day that
+// just ended, matching the client's `logicalToday()` grace window. This is
+// UTC-based and only a fallback; the client's local date is preferred.
+function todayWithCutoff(cutoffHour = 6): string {
   const now = new Date();
   const shifted = new Date(now.getTime() - cutoffHour * 60 * 60 * 1000);
   return shifted.toISOString().slice(0, 10);
@@ -31,7 +32,7 @@ function resolveToday(clientDate?: string): string {
   if (clientDate && ISO_DATE.test(clientDate)) {
     return clientDate;
   }
-  return todayWithCutoff(3);
+  return todayWithCutoff(6);
 }
 
 function isoDateToEpoch(d: string): number {

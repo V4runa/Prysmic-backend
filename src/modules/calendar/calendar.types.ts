@@ -69,7 +69,10 @@ export interface CalendarMoodItem {
   moodType: string;
   emoji: string;
   color?: string | null;
+  note?: string | null;
   date: string; // YYYY-MM-DD (local)
+  /** Added retroactively; shown on the grid but excluded from streak counts. */
+  backfilled: boolean;
 }
 
 export interface CalendarNoteItem {
