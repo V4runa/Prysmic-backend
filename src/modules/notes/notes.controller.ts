@@ -8,10 +8,12 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
   Req,
   BadRequestException,
   NotFoundException,
   ParseIntPipe,
+  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { NotesService } from './notes.service';
 import { Note } from './notes.entity';
@@ -23,6 +25,7 @@ import { UpdateNoteDto } from '../../dtos/update-note.dto';
 type AuthenticatedRequest = { user: { userId: number } };
 
 @Controller('notes')
+@UseInterceptors(ClassSerializerInterceptor)
 export class NotesController {
   constructor(
     private readonly notesService: NotesService,
