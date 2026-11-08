@@ -477,6 +477,158 @@ describe('Account export against disposable Postgres', () => {
     expect(sql).not.toMatch(/"note_content"/i);
     expect(sql).not.toContain('xxxxxxxx');
   });
+
+  it('refuses each previously unbounded string before that value is selected', async () => {
+    const oversized = 'Q'.repeat(80);
+    const cases: Array<{
+      name: string;
+      selectedAlias: string;
+      seed: () => Promise<void>;
+      restore?: () => Promise<void>;
+    }> = [
+      {
+        name: 'username',
+        selectedAlias: 'user_username',
+        seed: async () => {
+          await dataSource.query(
+            'UPDATE "users" SET "username" = $1 WHERE "id" = $2',
+            [oversized, userA.id],
+          );
+        },
+        restore: async () => {
+          await dataSource.query(
+            'UPDATE "users" SET "username" = $1 WHERE "id" = $2',
+            ['synth-owner-a', userA.id],
+          );
+        },
+      },
+      {
+        name: 'email',
+        selectedAlias: 'user_email',
+        seed: async () => {
+          await dataSource.query(
+            'UPDATE "users" SET "email" = $1 WHERE "id" = $2',
+            [`${oversized}@example.test`, userA.id],
+          );
+        },
+        restore: async () => {
+          await dataSource.query(
+            'UPDATE "users" SET "email" = $1 WHERE "id" = $2',
+            ['synth-a@example.test', userA.id],
+          );
+        },
+      },
+      {
+        name: 'mimeType',
+        selectedAlias: 'attachment_mimeType',
+        seed: async () => {
+          const saved = await dataSource
+            .getRepository(Note)
+            .save(note(userA.id, 'host'));
+          await dataSource.getRepository(NoteAttachment).save({
+            ...attachment(saved.id, userA.id, 'a.txt'),
+            mimeType: oversized,
+          });
+        },
+      },
+      {
+        name: 'habit.color',
+        selectedAlias: 'habit_color',
+        seed: async () => {
+          await dataSource
+            .getRepository(Habit)
+            .save({ ...habit(userA.id, 'n'), color: oversized });
+        },
+      },
+      {
+        name: 'habit.icon',
+        selectedAlias: 'habit_icon',
+        seed: async () => {
+          await dataSource
+            .getRepository(Habit)
+            .save({ ...habit(userA.id, 'n'), icon: oversized });
+        },
+      },
+      {
+        name: 'event.color',
+        selectedAlias: 'event_color',
+        seed: async () => {
+          await dataSource
+            .getRepository(CalendarEvent)
+            .save({ ...event(userA.id, 't', '2026-11-01'), color: oversized });
+        },
+      },
+    ];
+
+    for (const entry of cases) {
+      await dataSource.query(
+        'TRUNCATE "note_attachments", "note_tags", "task_tags", "habit_check", "habit", "task", "notes", "tags", "mood", "mood_options", "calendar_event" RESTART IDENTITY CASCADE',
+      );
+      await entry.seed();
+      queries.length = 0;
+      try {
+        const service = new ExportService(
+          dataSource,
+          budget({ textBytes: 40 }),
+        );
+        try {
+          await service.build(userA.id);
+          throw new Error(`expected ${entry.name} to be refused`);
+        } catch (error) {
+          const message = String((error as Error).message);
+          expect(message).toContain('stored text limit');
+          expect(message).toContain('No file was produced');
+          expect(message).not.toContain(oversized);
+        }
+        const sql = queries.join('\n');
+        expect(sql.toLowerCase()).not.toContain(`as "${entry.selectedAlias}"`);
+        expect(sql).not.toContain(oversized);
+      } finally {
+        if (entry.restore) await entry.restore();
+      }
+    }
+  });
+
+  it('counts combined note and task tag pairs before loading bodies', async () => {
+    const tags = await dataSource.getRepository(Tag).save([
+      { name: 'pair-a', color: 'cyan', user: userA },
+      { name: 'pair-b', color: 'amber', user: userA },
+    ]);
+    for (let i = 0; i < 3; i += 1) {
+      await dataSource.getRepository(Note).save({
+        ...note(userA.id, `pair-note-${i}`, 'PAIR-BODY-SENTINEL'),
+        tags,
+      });
+      await dataSource.getRepository(Task).save({
+        userId: userA.id,
+        title: `pair-task-${i}`,
+        tags,
+      });
+    }
+    queries.length = 0;
+    const service = new ExportService(
+      dataSource,
+      budget({
+        notes: 10,
+        tasks: 10,
+        tags: 10,
+        linkRows: 11,
+        textBytes: EXPORT_BUDGET.textBytes,
+      }),
+    );
+    try {
+      await service.build(userA.id);
+      throw new Error('expected the combined tag-link ceiling to refuse');
+    } catch (error) {
+      const message = String((error as Error).message);
+      expect(message).toContain('tag links');
+      expect(message).toContain('No file was produced');
+      expect(message).not.toContain('PAIR-BODY-SENTINEL');
+    }
+    const sql = queries.join('\n');
+    expect(sql).not.toMatch(/"note_content"/i);
+    expect(sql).not.toContain('PAIR-BODY-SENTINEL');
+  });
 });
 
 function note(

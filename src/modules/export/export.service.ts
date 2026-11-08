@@ -91,13 +91,20 @@ export class ExportService {
     manager: EntityManager,
     userId: number,
   ): Promise<AccountExport> {
-    const account = await manager
-      .getRepository(User)
-      .createQueryBuilder('user')
-      .select(['user.id', 'user.username', 'user.email', 'user.createdAt'])
-      .where('user.id = :userId', { userId })
-      .getOne();
-    if (!account) {
+    // Unbounded strings copied into the file. Measured before any of those
+    // values are loaded. Schema-capped strings are not summed: moodType
+    // varchar(40), mood/option emoji varchar(16), mood/option color varchar(24),
+    // option label varchar(40), linkedType varchar(16), enums, dates, times,
+    // and ISO timestamps. contentText is derived from note content.
+    const accountM = await this.measure(
+      manager,
+      User,
+      'user',
+      userId,
+      ['username', 'email'],
+      'id',
+    );
+    if (accountM.rows !== 1) {
       throw new NotFoundException('User not found');
     }
 
@@ -118,30 +125,31 @@ export class ExportService {
       'description',
       'intent',
       'affirmation',
+      'color',
+      'icon',
     ]);
     const checksM = await this.measureChecks(manager, userId);
-    const moodsM = await this.measure(manager, Mood, 'mood', userId, [
-      'moodType',
-      'emoji',
-      'note',
-    ]);
-    const optionsM = await this.measure(manager, MoodOption, 'option', userId, [
-      'label',
-      'emoji',
-    ]);
+    const moodsM = await this.measure(manager, Mood, 'mood', userId, ['note']);
+    const optionsM = await this.measure(
+      manager,
+      MoodOption,
+      'option',
+      userId,
+      [],
+    );
     const eventsM = await this.measure(
       manager,
       CalendarEvent,
       'event',
       userId,
-      ['title', 'description', 'location'],
+      ['title', 'description', 'location', 'color'],
     );
     const attachmentsM = await this.measure(
       manager,
       NoteAttachment,
       'attachment',
       userId,
-      ['filename'],
+      ['filename', 'mimeType'],
     );
     const noteLinks = await this.countLinks(manager, Note, 'note', userId);
     const taskLinks = await this.countLinks(manager, Task, 'task', userId);
@@ -162,6 +170,7 @@ export class ExportService {
     const linkRows = noteLinks + taskLinks;
     this.refuseRows('tag links', linkRows, this.budget.linkRows);
     const textBytes =
+      accountM.textBytes +
       notesM.textBytes +
       tagsM.textBytes +
       tasksM.textBytes +
@@ -178,6 +187,16 @@ export class ExportService {
 
     if (this.probe?.afterMeasures) {
       await this.probe.afterMeasures();
+    }
+
+    const account = await manager
+      .getRepository(User)
+      .createQueryBuilder('user')
+      .select(['user.id', 'user.username', 'user.email', 'user.createdAt'])
+      .where('user.id = :userId', { userId })
+      .getOne();
+    if (!account) {
+      throw new NotFoundException('User not found');
     }
 
     const noteRows = await this.loadRows(
@@ -354,6 +373,7 @@ export class ExportService {
     alias: string,
     userId: number,
     textColumns: string[],
+    ownerColumn = 'userId',
   ): Promise<Measure> {
     const sum =
       textColumns.length === 0
@@ -366,7 +386,7 @@ export class ExportService {
       .createQueryBuilder(alias)
       .select('COUNT(*)', 'rows')
       .addSelect(`COALESCE(SUM(${sum}), 0)`, 'textBytes')
-      .where(`${alias}.userId = :userId`, { userId })
+      .where(`${alias}.${ownerColumn} = :userId`, { userId })
       .getRawOne<Record<string, unknown>>();
     return {
       rows: this.rawNumber(raw, 'rows') ?? 0,
@@ -398,13 +418,16 @@ export class ExportService {
     alias: string,
     userId: number,
   ): Promise<number> {
-    return manager
+    // COUNT(*) of the join, not getCount(): that counts distinct parents.
+    const raw = await manager
       .getRepository(entity)
       .createQueryBuilder(alias)
       .innerJoin(`${alias}.tags`, 'tag')
+      .select('COUNT(*)', 'rows')
       .where(`${alias}.userId = :userId`, { userId })
       .andWhere('tag.userId = :userId', { userId })
-      .getCount();
+      .getRawOne<Record<string, unknown>>();
+    return this.rawNumber(raw, 'rows') ?? 0;
   }
 
   private async loadRows<T extends ObjectLiteral>(
