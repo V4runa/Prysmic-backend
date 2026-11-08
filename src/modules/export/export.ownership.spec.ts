@@ -529,6 +529,17 @@ function createMemory() {
             return qb;
           },
           async getRawOne() {
+            if (state.joinTags) {
+              const pairs = ownedRows().reduce((sum, row) => {
+                const ids = (row.tagIds as number[] | undefined) ?? [];
+                return (
+                  sum +
+                  ids.filter((id) => tagById.get(id)?.userId === state.userId)
+                    .length
+                );
+              }, 0);
+              return { rows: pairs, textBytes: 0 };
+            }
             const matched = state.joinHabit
               ? checks.filter((check) =>
                   habits.some(
@@ -554,7 +565,11 @@ function createMemory() {
                 'emoji',
                 'location',
                 'filename',
+                'mimeType',
                 'color',
+                'icon',
+                'username',
+                'email',
               ]) {
                 const field = row[key];
                 if (expr.includes(`.${key}`) && typeof field === 'string') {
