@@ -30,17 +30,37 @@ export function toIso(value: Date | string | null | undefined): string | null {
   return parsed.toISOString();
 }
 
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Calendar dates stay on the stored civil day. A `date` value from Postgres
+ * arrives as local midnight; formatting that through UTC shifts the day in
+ * timezones ahead of UTC.
+ */
 export function toDateOnly(
   value: string | Date | null | undefined,
 ): string | null {
   if (value == null || value === '') return null;
-  if (typeof value === 'string') return value.slice(0, 10);
-  return value.toISOString().slice(0, 10);
+  if (typeof value === 'string') {
+    return DATE_ONLY.test(value) ? value : null;
+  }
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
-export function toTime(value: string | null | undefined): string | null {
+export function toTime(value: string | Date | null | undefined): string | null {
   if (value == null || value === '') return null;
-  return value.length >= 8 ? value.slice(0, 8) : value;
+  if (value instanceof Date) {
+    const hour = String(value.getHours()).padStart(2, '0');
+    const minute = String(value.getMinutes()).padStart(2, '0');
+    const second = String(value.getSeconds()).padStart(2, '0');
+    return `${hour}:${minute}:${second}`;
+  }
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?/.exec(value);
+  if (!match) return null;
+  return `${match[1]}:${match[2]}:${match[3] ?? '00'}`;
 }
 
 function textOrNull(value: string | null | undefined): string | null {

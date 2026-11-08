@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { CalendarEvent } from '../calendar/calendar-event.entity';
@@ -16,7 +16,7 @@ import { Note } from '../notes/notes.entity';
 import { Tag } from '../tags/tags.entity';
 import { Task } from '../tasks/tasks.entity';
 import { User } from '../users/user.entity';
-import { EXPORT_LIMITS } from './export.constants';
+import { EXPORT_BUDGET } from './export.constants';
 import { ExportController } from './export.controller';
 import { ExportService } from './export.service';
 
@@ -189,7 +189,7 @@ function createMemory() {
     },
   ];
 
-  for (let i = 0; i < EXPORT_LIMITS.notes + 1; i += 1) {
+  for (let i = 0; i < EXPORT_BUDGET.notes + 1; i += 1) {
     notes.push({
       id: 5000 + i,
       userId: USER_BOUNDS,
@@ -475,21 +475,167 @@ function createMemory() {
         return found ? { ...found } : null;
       },
       createQueryBuilder() {
-        let userId: number | undefined;
+        const state: {
+          userId?: number;
+          limit?: number;
+          joinTags: boolean;
+          joinHabit: boolean;
+          fields: string[];
+        } = { joinTags: false, joinHabit: false, fields: [] };
+        const ownedRows = () =>
+          rows.filter(
+            (row) =>
+              state.userId === undefined ||
+              row.userId === state.userId ||
+              row.id === state.userId,
+          );
+        const strip = (row: Row) => {
+          const copy = { ...row };
+          delete copy.password;
+          delete copy.data;
+          delete copy.user;
+          return copy;
+        };
         const qb = {
-          select: () => qb,
-          addSelect: () => qb,
-          where: (_sql: string, params?: { userId?: number }) => {
-            userId = params?.userId;
+          select: (field: string) => {
+            state.fields = [field];
             return qb;
           },
-          getRawMany: async () =>
-            habits
-              .filter((row) => userId === undefined || row.userId === userId)
-              .map((row) => ({
-                id: row.id,
-                originNoteId: row.originNoteId ?? null,
-              })),
+          addSelect: (field: string) => {
+            state.fields.push(field);
+            return qb;
+          },
+          where: (_sql: string, params?: { userId?: number }) => {
+            if (params?.userId != null) state.userId = Number(params.userId);
+            return qb;
+          },
+          andWhere: (_sql: string, params?: { userId?: number }) => {
+            if (params?.userId != null) state.userId = Number(params.userId);
+            return qb;
+          },
+          innerJoin: (path: string) => {
+            if (path.includes('tags')) state.joinTags = true;
+            if (path.includes('habit')) state.joinHabit = true;
+            return qb;
+          },
+          orderBy: () => qb,
+          addOrderBy: () => qb,
+          limit: (n: number) => {
+            state.limit = n;
+            return qb;
+          },
+          take: (n: number) => {
+            state.limit = n;
+            return qb;
+          },
+          async getRawOne() {
+            const matched = state.joinHabit
+              ? checks.filter((check) =>
+                  habits.some(
+                    (habit) =>
+                      habit.id === check.habitId &&
+                      habit.userId === state.userId,
+                  ),
+                )
+              : ownedRows();
+            let textBytes = 0;
+            const expr = state.fields.join(' ');
+            for (const row of matched) {
+              for (const key of [
+                'title',
+                'content',
+                'name',
+                'description',
+                'intent',
+                'affirmation',
+                'note',
+                'moodType',
+                'label',
+                'emoji',
+                'location',
+                'filename',
+                'color',
+              ]) {
+                const field = row[key];
+                if (expr.includes(`.${key}`) && typeof field === 'string') {
+                  textBytes += Buffer.byteLength(field);
+                }
+              }
+            }
+            return { rows: matched.length, textBytes };
+          },
+          async getCount() {
+            if (state.joinTags) {
+              return ownedRows().reduce((sum, row) => {
+                const ids = (row.tagIds as number[] | undefined) ?? [];
+                return (
+                  sum +
+                  ids.filter((id) => tagById.get(id)?.userId === state.userId)
+                    .length
+                );
+              }, 0);
+            }
+            return ownedRows().length;
+          },
+          async getOne() {
+            const found = ownedRows()[0];
+            return found ? strip(found) : null;
+          },
+          async getMany() {
+            let matched = ownedRows();
+            if (state.joinHabit) {
+              const habitIds = new Set(
+                habits
+                  .filter((habit) => habit.userId === state.userId)
+                  .map((habit) => habit.id),
+              );
+              matched = checks
+                .filter((check) => habitIds.has(check.habitId as number))
+                .sort(
+                  (a, b) =>
+                    String(a.date).localeCompare(String(b.date)) || a.id - b.id,
+                );
+            } else {
+              matched = [...matched].sort((a, b) => a.id - b.id);
+            }
+            if (state.limit !== undefined) {
+              matched = matched.slice(0, state.limit);
+            }
+            return matched.map(strip);
+          },
+          async getRawMany() {
+            const expr = state.fields.join(' ');
+            if (expr.includes('originNoteId')) {
+              return habits
+                .filter((habit) => habit.userId === state.userId)
+                .map((habit) => ({
+                  id: habit.id,
+                  originNoteId: habit.originNoteId ?? null,
+                }));
+            }
+            if (state.joinTags) {
+              const pairs: {
+                noteId?: number;
+                taskId?: number;
+                tagId: number;
+              }[] = [];
+              for (const row of ownedRows()) {
+                for (const tagId of (row.tagIds as number[] | undefined) ??
+                  []) {
+                  if (tagById.get(tagId)?.userId !== state.userId) continue;
+                  pairs.push(
+                    table === 'tasks'
+                      ? { taskId: row.id, tagId }
+                      : { noteId: row.id, tagId },
+                  );
+                }
+              }
+              return state.limit !== undefined
+                ? pairs.slice(0, state.limit)
+                : pairs;
+            }
+            return [];
+          },
         };
         return qb;
       },
@@ -501,21 +647,38 @@ function createMemory() {
     };
   }
 
-  return {
-    writes: () => writes,
-    repos: {
-      users: repo('users'),
-      notes: repo('notes', true),
-      tags: repo('tags'),
-      tasks: repo('tasks', true),
-      habits: repo('habits'),
-      checks: repo('checks'),
-      moods: repo('moods'),
-      moodOptions: repo('moodOptions'),
-      events: repo('events'),
-      attachments: repo('attachments'),
-    },
+  const repos = new Map<unknown, ReturnType<typeof repo>>([
+    [User, repo('users')],
+    [Note, repo('notes', true)],
+    [Tag, repo('tags')],
+    [Task, repo('tasks', true)],
+    [Habit, repo('habits')],
+    [HabitCheck, repo('checks')],
+    [Mood, repo('moods')],
+    [MoodOption, repo('moodOptions')],
+    [CalendarEvent, repo('events')],
+    [NoteAttachment, repo('attachments')],
+  ]);
+
+  const dataSource = {
+    createQueryRunner: () => ({
+      connect: async () => undefined,
+      startTransaction: async () => undefined,
+      query: async () => undefined,
+      commitTransaction: async () => undefined,
+      rollbackTransaction: async () => undefined,
+      release: async () => undefined,
+      manager: {
+        getRepository: (entity: unknown) => {
+          const found = repos.get(entity);
+          if (!found) throw new Error('unexpected repository');
+          return found;
+        },
+      },
+    }),
   };
+
+  return { writes: () => writes, dataSource };
 }
 
 function hasForbiddenKey(value: unknown): boolean {
@@ -558,28 +721,7 @@ describe('Account export', () => {
       providers: [
         ExportService,
         JwtStrategy,
-        { provide: getRepositoryToken(User), useValue: memory.repos.users },
-        { provide: getRepositoryToken(Note), useValue: memory.repos.notes },
-        { provide: getRepositoryToken(Tag), useValue: memory.repos.tags },
-        { provide: getRepositoryToken(Task), useValue: memory.repos.tasks },
-        { provide: getRepositoryToken(Habit), useValue: memory.repos.habits },
-        {
-          provide: getRepositoryToken(HabitCheck),
-          useValue: memory.repos.checks,
-        },
-        { provide: getRepositoryToken(Mood), useValue: memory.repos.moods },
-        {
-          provide: getRepositoryToken(MoodOption),
-          useValue: memory.repos.moodOptions,
-        },
-        {
-          provide: getRepositoryToken(CalendarEvent),
-          useValue: memory.repos.events,
-        },
-        {
-          provide: getRepositoryToken(NoteAttachment),
-          useValue: memory.repos.attachments,
-        },
+        { provide: DataSource, useValue: memory.dataSource },
       ],
     }).compile();
 
@@ -626,11 +768,45 @@ describe('Account export', () => {
   const server = () => app.getHttpServer();
   const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-  it('rejects an unauthenticated export', async () => {
-    const response = await request(server()).get('/export');
-    expect(response.status).toBe(401);
-    expect(JSON.stringify(response.body)).not.toContain('Pond note');
-    expect(JSON.stringify(response.body)).not.toContain(HASH_A);
+  it('rejects an unauthenticated, invalid, or expired token', async () => {
+    const missing = await request(server()).get('/export');
+    expect(missing.status).toBe(401);
+    expect(JSON.stringify(missing.body)).not.toContain('Pond note');
+    expect(JSON.stringify(missing.body)).not.toContain(HASH_A);
+
+    const invalid = await request(server())
+      .get('/export')
+      .set('Authorization', 'Bearer not-a-jwt');
+    expect(invalid.status).toBe(401);
+    expect(JSON.stringify(invalid.body)).not.toContain('Pond note');
+
+    const wrongKey = new JwtService({ secret: 'different-test-secret' });
+    const forged = wrongKey.sign({
+      sub: USER_A,
+      username: 'synth-owner-a',
+      email: 'synth-a@example.test',
+    });
+    const forgedResponse = await request(server())
+      .get('/export')
+      .set(auth(forged));
+    expect(forgedResponse.status).toBe(401);
+
+    const expired = new JwtService({
+      secret: TEST_JWT_SECRET,
+    }).sign(
+      {
+        sub: USER_A,
+        username: 'synth-owner-a',
+        email: 'synth-a@example.test',
+      },
+      { expiresIn: '-1s' },
+    );
+    const expiredResponse = await request(server())
+      .get('/export')
+      .set(auth(expired));
+    expect(expiredResponse.status).toBe(401);
+    expect(JSON.stringify(expiredResponse.body)).not.toContain('Pond note');
+    expect(JSON.stringify(expiredResponse.body)).not.toContain(HASH_A);
   });
 
   it('exports an empty account as a complete snapshot with no secrets', async () => {
