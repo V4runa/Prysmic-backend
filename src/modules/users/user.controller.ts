@@ -1,71 +1,107 @@
-import { Controller, Get, Post, Body, Param, Delete, Put, NotFoundException, UseGuards } from '@nestjs/common';
-import { UserService } from './user.service';
-import { CreateUserDto, UpdateUserDto } from '../../dtos/user';
-import { User } from './user.entity';
+import {
+  Controller,
+  Get,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Req,
+  UseGuards,
+  UseInterceptors,
+  NotFoundException,
+  ParseIntPipe,
+  ClassSerializerInterceptor,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UpdateUserDto } from '../../dtos/user';
+import { UserService, toPublicUser, PublicUser } from './user.service';
+
+type AuthenticatedRequest = { user: { userId: number } };
 
 @Controller('users')
+@UseGuards(JwtAuthGuard)
+@UseInterceptors(ClassSerializerInterceptor)
 export class UserController {
-    constructor(private readonly userService: UserService) {}
+  constructor(private readonly userService: UserService) {}
 
-    // Create a new user
-    @Post()
-    @UseGuards(JwtAuthGuard)
-    async create(@Body() createUserDto: CreateUserDto): Promise<User> {
-        return this.userService.create(createUserDto);
-    }
+  // The collection is the caller only. It never lists other accounts.
+  @Get()
+  async findSelf(@Req() req: AuthenticatedRequest): Promise<PublicUser[]> {
+    const user = await this.loadSelf(req.user.userId);
+    return [toPublicUser(user)];
+  }
 
-    // Get all users
-    @Get()
-    @UseGuards(JwtAuthGuard)
-    async findAll(): Promise<User[]> {
-        return this.userService.findAll();
+  @Get('username/:username')
+  async findByUsername(
+    @Req() req: AuthenticatedRequest,
+    @Param('username') username: string,
+  ): Promise<PublicUser> {
+    const user = await this.loadSelf(req.user.userId);
+    if (user.username !== username) {
+      throw new NotFoundException('User not found');
     }
+    return toPublicUser(user);
+  }
 
-    // Get a user by ID
-    @Get(':id')
-    @UseGuards(JwtAuthGuard)
-    async findById(@Param('id') id: string): Promise<User> {
-        const user = await this.userService.findById(parseInt(id, 10));
-        if(!user) {
-          throw new NotFoundException('User not found');
-        }
-        return user;
+  @Get('email/:email')
+  async findByEmail(
+    @Req() req: AuthenticatedRequest,
+    @Param('email') email: string,
+  ): Promise<PublicUser> {
+    const user = await this.loadSelf(req.user.userId);
+    if (user.email !== email) {
+      throw new NotFoundException('User not found');
     }
+    return toPublicUser(user);
+  }
 
-    // Get a user by username
-    @Get('username/:username')
-    @UseGuards(JwtAuthGuard)
-    async findByUsername(@Param('username') username: string): Promise<User> {
-        const user = await this.userService.findByUsername(username);
-        if(!user) {
-            throw new NotFoundException('User not found');
-        }
-        return user;
-    }
+  @Get(':id')
+  async findById(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<PublicUser> {
+    this.assertSelf(req.user.userId, id);
+    const user = await this.loadSelf(req.user.userId);
+    return toPublicUser(user);
+  }
 
-    // Get a user by email
-    @Get('email/:email')
-    @UseGuards(JwtAuthGuard)
-    async findByEmail(@Param('email') email: string): Promise<User> {
-        const user = await this.userService.findByEmail(email);
-        if(!user) {
-            throw new NotFoundException('User not found');
-        }
-        return user;
-    }
+  @Put(':id')
+  async update(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserDto,
+  ): Promise<PublicUser> {
+    this.assertSelf(req.user.userId, id);
+    const saved = await this.userService.update(Number(req.user.userId), dto);
+    return toPublicUser(saved);
+  }
 
-    // Update a user
-    @Put(':id')
-    @UseGuards(JwtAuthGuard)
-    async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto): Promise<User> {
-        return this.userService.update(parseInt(id, 10), updateUserDto);
-    }
+  @Delete(':id')
+  async remove(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<void> {
+    this.assertSelf(req.user.userId, id);
+    await this.userService.remove(Number(req.user.userId));
+  }
 
-    // Delete a user
-    @Delete(':id')
-    @UseGuards(JwtAuthGuard)
-    async remove(@Param('id') id: string): Promise<void> {
-        return this.userService.remove(parseInt(id, 10));
+  // Another id and a missing id share one response so callers cannot tell them apart.
+  private assertSelf(authUserId: number, requestedId: number): void {
+    const authId = Number(authUserId);
+    if (!Number.isInteger(authId) || authId !== requestedId) {
+      throw new NotFoundException('User not found');
     }
+  }
+
+  private async loadSelf(authUserId: number) {
+    const authId = Number(authUserId);
+    if (!Number.isInteger(authId)) {
+      throw new NotFoundException('User not found');
+    }
+    const user = await this.userService.findById(authId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
+  }
 }

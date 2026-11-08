@@ -1,12 +1,6 @@
-import {
-  BeforeInsert,
-  Column,
-  Entity,
-  OneToMany,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Exclude } from 'class-transformer';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { Note } from '../notes/notes.entity';
-import * as bcrypt from 'bcrypt';
 import { Tag } from '../tags/tags.entity';
 import { Habit } from '../habits/habit.entity';
 import { Task } from '../tasks/tasks.entity';
@@ -25,6 +19,7 @@ export class User {
   email: string;
 
   @Column()
+  @Exclude()
   password: string;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
