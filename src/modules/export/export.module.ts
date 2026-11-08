@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EXPORT_BUDGET, EXPORT_BUDGET_TOKEN } from './export.constants';
 import { CalendarEvent } from '../calendar/calendar-event.entity';
 import { HabitCheck } from '../habits/habit-check.entity';
 import { Habit } from '../habits/habit.entity';
@@ -29,6 +30,9 @@ import { ExportService } from './export.service';
     ]),
   ],
   controllers: [ExportController],
-  providers: [ExportService],
+  providers: [
+    ExportService,
+    { provide: EXPORT_BUDGET_TOKEN, useValue: EXPORT_BUDGET },
+  ],
 })
 export class ExportModule {}
