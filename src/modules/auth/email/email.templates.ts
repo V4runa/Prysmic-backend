@@ -70,6 +70,31 @@ export function renderPasswordResetEmail(url: string): RenderedEmail {
   return { subject, html, text };
 }
 
+export const PASSWORD_CHANGED_SUBJECT = 'Your Prysmic password was changed';
+
+export function renderPasswordChangedEmail(): RenderedEmail {
+  const subject = PASSWORD_CHANGED_SUBJECT;
+  const text = [
+    'Prysmic',
+    '',
+    'Your password was changed',
+    '',
+    'The password for this journal was just changed. Other signed-in sessions have been signed out.',
+    '',
+    'If you did not do this, someone who knew the previous password did. Reset it from the sign-in page.',
+  ].join('\n');
+  const html = layout({
+    preheader: 'Your Prysmic password was changed.',
+    heading: 'Your password was changed',
+    paragraphs: [
+      'The password for this journal was just changed. Other signed-in sessions have been signed out.',
+    ],
+    footnote:
+      'If you did not do this, someone who knew the previous password did. Reset it from the sign-in page.',
+  });
+  return { subject, html, text };
+}
+
 export const ACCOUNT_DELETED_SUBJECT = 'Your Prysmic account has been deleted';
 
 export function renderAccountDeletedEmail(): RenderedEmail {

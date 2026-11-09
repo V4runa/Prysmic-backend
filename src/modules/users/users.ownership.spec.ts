@@ -11,6 +11,8 @@ import { AuthService } from '../auth/auth.service';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { AccountLifecycleService } from '../auth/account-lifecycle.service';
+import { EMAIL_CHANGE_PASSWORD_REQUIRED } from '../auth/account.constants';
+import { AuthRateLimiter } from '../auth/rate-limit';
 import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { User } from './user.entity';
 import { UserController } from './user.controller';
@@ -156,6 +158,7 @@ describe('User ownership and password serialization', () => {
           provide: getRepositoryToken(AuthToken),
           useValue: { manager: {} },
         },
+        AuthRateLimiter,
       ],
     }).compile();
 
@@ -365,16 +368,32 @@ describe('User ownership and password serialization', () => {
     expect(users.find((user) => user.id === idB)!.email).toBe(EMAIL_B);
     expect(JSON.stringify(foreignUpdate.body)).not.toContain(EMAIL_B);
 
+    const missingPassword = await request(server())
+      .put(`/users/${idA}`)
+      .set(auth(tokenA))
+      .send({ email: 'moved-synth@example.test' });
+    expect(missingPassword.status).toBe(400);
+    expect(missingPassword.body.message).toBe(EMAIL_CHANGE_PASSWORD_REQUIRED);
+    expect(users.find((user) => user.id === idA)!.email).toBe(EMAIL_A);
+
     const clash = await request(server())
       .put(`/users/${idA}`)
       .set(auth(tokenA))
-      .send({ email: EMAIL_B });
-    expect(clash.status).toBe(400);
-    expect(JSON.stringify(clash.body).toLowerCase()).not.toMatch(
-      /already|exists|taken/,
-    );
+      .send({ email: EMAIL_B, currentPassword: PASS_A });
+    expect(clash.status).toBe(409);
+    expect(clash.body.message).toBe('Email already in use!');
     expect(users.find((user) => user.id === idA)!.email).toBe(EMAIL_A);
     expect(JSON.stringify(clash.body)).not.toContain(PASS_A);
+
+    const nameClash = await request(server())
+      .put(`/users/${idA}`)
+      .set(auth(tokenA))
+      .send({ username: 'synth-owner-c' });
+    expect(nameClash.status).toBe(409);
+    expect(nameClash.body.message).toBe('Username already taken!');
+    expect(users.find((user) => user.id === idA)!.username).toBe(
+      'synth-owner-a-renamed',
+    );
   });
 
   it('no longer exposes DELETE /users/:id, and does not expose account creation', async () => {

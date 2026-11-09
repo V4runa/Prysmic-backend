@@ -7,11 +7,13 @@ import {
   Post,
   Req,
   UseFilters,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import {
+  ChangePasswordDto,
   EmailRequestDto,
   ResetPasswordDto,
   SignupDto,
@@ -23,6 +25,7 @@ import { EMAIL_REQUEST_ACCEPTED } from './account.constants';
 import { RateLimitFilter } from './rate-limit.filter';
 import { clientIp } from './client-ip';
 import { passwordPolicy, type PasswordPolicy } from './password-policy';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 @UseFilters(RateLimitFilter)
@@ -74,5 +77,20 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.lifecycle.resetPassword(dto.token, dto.password);
     return { passwordUpdated: true };
+  }
+
+  @Post('password/change')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Req() req: Request & { user: { userId: number } },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      Number(req.user.userId),
+      dto.currentPassword,
+      dto.newPassword,
+      clientIp(req),
+    );
   }
 }

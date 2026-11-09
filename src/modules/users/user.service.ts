@@ -1,15 +1,25 @@
 import {
   BadRequestException,
+  ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
 import { CreateUserDto, UpdateUserDto } from '../../dtos/user';
 import { AuthToken } from '../auth/tokens/auth-token.entity';
-import { AUTH_TOKEN_PURPOSE } from '../auth/account.constants';
+import {
+  AUTH_TOKEN_PURPOSE,
+  EMAIL_CHANGE_PASSWORD_REQUIRED,
+  INVALID_CREDENTIALS,
+} from '../auth/account.constants';
 import { rowsFromQuery } from '../../database/query-rows';
+import { AuthRateLimiter } from '../auth/rate-limit';
 
 export interface PublicUser {
   id: number;
@@ -18,6 +28,19 @@ export interface PublicUser {
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface UserUpdateResult {
+  user: User;
+  emailChanged: boolean;
+}
+
+export interface PasswordChangeResult {
+  id: number;
+  username: string;
+  email: string;
+  emailVerified: boolean;
+  sessionVersion: number;
 }
 
 /** Fields safe to send to a client. Password and relations stay off the wire. */
@@ -39,6 +62,8 @@ export class UserService {
     private userRepository: Repository<User>,
     @InjectRepository(AuthToken)
     private authTokens: Repository<AuthToken>,
+    @Inject(forwardRef(() => AuthRateLimiter))
+    private readonly rateLimiter: AuthRateLimiter,
   ) {}
 
   // Stores the password it is given. Auth signup hashes before calling this.
@@ -126,46 +151,97 @@ export class UserService {
     return this.userRepository.findOne({ where: { id } });
   }
 
-  // Username and email only. Password is not accepted here, so a profile
-  // update cannot replace the hash. A new email clears verification.
-  async update(id: number, updateUserDto: UpdateUserDto): Promise<User> {
+  /**
+   * Username and email only. This does not replace the password hash.
+   * A real email change requires the current password, clears verification,
+   * and retires unused confirmation links. The caller sends the new letter.
+   */
+  async update(
+    id: number,
+    updateUserDto: UpdateUserDto,
+    ip = 'unknown',
+  ): Promise<UserUpdateResult> {
     const user = await this.findById(id);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    let emailChanged = false;
-    if (updateUserDto.email) {
-      const next = updateUserDto.email.trim().toLowerCase();
-      if (next !== user.email.toLowerCase()) {
-        if (await this.emailTakenBySomeoneElse(next, user.id)) {
-          throw new BadRequestException('Could not update profile');
-        }
-        if (await this.usernameCollidesWithEmail(next, user.id)) {
-          throw new BadRequestException('Could not update profile');
-        }
-        user.email = next;
-        user.emailVerified = false;
-        emailChanged = true;
+    const requestedEmail = updateUserDto.email?.trim().toLowerCase();
+    const nextEmail =
+      requestedEmail && requestedEmail !== user.email.toLowerCase()
+        ? requestedEmail
+        : undefined;
+    const requestedUsername = updateUserDto.username;
+    const nextUsername =
+      requestedUsername && requestedUsername !== user.username
+        ? requestedUsername
+        : undefined;
+
+    if (nextEmail) {
+      await this.assertCurrentPassword(user, updateUserDto.currentPassword, ip);
+      if (await this.emailTakenBySomeoneElse(nextEmail, user.id)) {
+        throw new ConflictException('Email already in use!');
+      }
+      if (await this.usernameCollidesWithEmail(nextEmail, user.id)) {
+        throw new ConflictException('Email already in use!');
       }
     }
 
-    if (updateUserDto.username && updateUserDto.username !== user.username) {
-      const taken = await this.findByUsername(updateUserDto.username);
+    if (nextUsername) {
+      const taken = await this.findByUsername(nextUsername);
       if (taken && taken.id !== user.id) {
-        throw new BadRequestException('Could not update profile');
+        throw new ConflictException('Username already taken!');
       }
-      if (await this.emailTakenBySomeoneElse(updateUserDto.username, user.id)) {
-        throw new BadRequestException('Could not update profile');
+      if (await this.emailTakenBySomeoneElse(nextUsername, user.id)) {
+        throw new ConflictException('Username already taken!');
       }
-      user.username = updateUserDto.username;
+    }
+
+    const emailChanged = nextEmail !== undefined;
+    if (nextEmail) {
+      user.email = nextEmail;
+      user.emailVerified = false;
+    }
+    if (nextUsername) {
+      user.username = nextUsername;
     }
 
     const saved = await this.userRepository.save(user);
     if (emailChanged) {
       await this.revokeVerificationTokens(saved.id);
     }
-    return saved;
+    return { user: saved, emailChanged };
+  }
+
+  /**
+   * Atomic password replacement for a signed-in change. Does not touch
+   * emailVerified: a reset link proves the mailbox, this path does not.
+   */
+  async changePasswordHash(
+    userId: number,
+    passwordHash: string,
+  ): Promise<PasswordChangeResult | null> {
+    const updated = rowsFromQuery<PasswordChangeResult>(
+      await this.userRepository.manager.query(
+        `UPDATE "users"
+         SET "password" = $1,
+             "sessionVersion" = "sessionVersion" + 1,
+             "updatedAt" = NOW()
+         WHERE "id" = $2
+         RETURNING "id", "username", "email", "emailVerified", "sessionVersion"`,
+        [passwordHash, userId],
+      ),
+    );
+    const row = updated[0];
+    if (!row) return null;
+    const sessionVersion = Number(row.sessionVersion);
+    return {
+      id: Number(row.id),
+      username: row.username,
+      email: row.email,
+      emailVerified: row.emailVerified === true,
+      sessionVersion: Number.isInteger(sessionVersion) ? sessionVersion : 0,
+    };
   }
 
   async markEmailVerified(
@@ -199,6 +275,23 @@ export class UserService {
       ),
     );
     return updated.length > 0;
+  }
+
+  private async assertCurrentPassword(
+    user: User,
+    currentPassword: string | undefined,
+    ip: string,
+  ): Promise<void> {
+    if (!currentPassword) {
+      throw new BadRequestException(EMAIL_CHANGE_PASSWORD_REQUIRED);
+    }
+    this.rateLimiter.assert(
+      'email_change',
+      user.email.trim().toLowerCase(),
+      ip,
+    );
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) throw new UnauthorizedException(INVALID_CREDENTIALS);
   }
 
   private async revokeVerificationTokens(userId: number): Promise<void> {

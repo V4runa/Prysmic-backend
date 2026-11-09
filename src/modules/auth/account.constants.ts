@@ -20,8 +20,16 @@ export const EMAIL_UNAVAILABLE =
 
 export const INVALID_LINK = 'This link is invalid or has expired.';
 
-/** Shared by login and account deletion so a wrong password reads the same. */
+/** Shared by login, account deletion, and signed-in password checks. */
 export const INVALID_CREDENTIALS = 'Invalid credentials';
+
+/** Signed-in password change submitted the password that is already set. */
+export const PASSWORD_UNCHANGED =
+  'New password must be different from the current password.';
+
+/** An email change was requested without the current password. */
+export const EMAIL_CHANGE_PASSWORD_REQUIRED =
+  'Enter your current password to change your email.';
 
 export const RATE_LIMIT_MESSAGE =
   'Too many requests. Wait a little, then try again.';

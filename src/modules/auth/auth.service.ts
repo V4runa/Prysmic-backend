@@ -114,6 +114,25 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  /**
+   * Replaces the signed-in account's password and returns a new access
+   * token for this caller. Other sessions die with the sessionVersion bump.
+   */
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+    ip: string,
+  ) {
+    const user = await this.lifecycle.changePassword(
+      userId,
+      currentPassword,
+      newPassword,
+      ip,
+    );
+    return this.issueSession(user);
+  }
+
   private issueSession(user: SessionUser) {
     const payload = {
       sub: user.id,
