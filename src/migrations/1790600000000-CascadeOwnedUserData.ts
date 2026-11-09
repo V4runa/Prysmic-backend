@@ -15,13 +15,13 @@ export class CascadeOwnedUserData1790600000000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "habit" DROP CONSTRAINT IF EXISTS "FK_52202c28f0e9699f9ce660fb815"`,
+      `ALTER TABLE "habit" DROP CONSTRAINT "FK_52202c28f0e9699f9ce660fb815"`,
     );
     await queryRunner.query(
       `ALTER TABLE "habit" ADD CONSTRAINT "FK_52202c28f0e9699f9ce660fb815" FOREIGN KEY ("originNoteId") REFERENCES "notes"("id") ON DELETE SET NULL ON UPDATE NO ACTION`,
     );
     await queryRunner.query(
-      `ALTER TABLE "note_tags" DROP CONSTRAINT IF EXISTS "FK_993c9e3195b19f2928a42cf113b"`,
+      `ALTER TABLE "note_tags" DROP CONSTRAINT "FK_993c9e3195b19f2928a42cf113b"`,
     );
     await queryRunner.query(
       `ALTER TABLE "note_tags" ADD CONSTRAINT "FK_993c9e3195b19f2928a42cf113b" FOREIGN KEY ("tagsId") REFERENCES "tags"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
@@ -30,13 +30,13 @@ export class CascadeOwnedUserData1790600000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "note_tags" DROP CONSTRAINT IF EXISTS "FK_993c9e3195b19f2928a42cf113b"`,
+      `ALTER TABLE "note_tags" DROP CONSTRAINT "FK_993c9e3195b19f2928a42cf113b"`,
     );
     await queryRunner.query(
       `ALTER TABLE "note_tags" ADD CONSTRAINT "FK_993c9e3195b19f2928a42cf113b" FOREIGN KEY ("tagsId") REFERENCES "tags"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
     );
     await queryRunner.query(
-      `ALTER TABLE "habit" DROP CONSTRAINT IF EXISTS "FK_52202c28f0e9699f9ce660fb815"`,
+      `ALTER TABLE "habit" DROP CONSTRAINT "FK_52202c28f0e9699f9ce660fb815"`,
     );
     await queryRunner.query(
       `ALTER TABLE "habit" ADD CONSTRAINT "FK_52202c28f0e9699f9ce660fb815" FOREIGN KEY ("originNoteId") REFERENCES "notes"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,

@@ -290,6 +290,13 @@ describe('account deletion and password policy against Postgres', () => {
       .set(auth(shortLogin.body.access_token as string))
       .send({ password: 'abc123' });
     expect(removed.status).toBe(204);
+    const verifiedLetter = (await delivered()).filter(
+      (message) =>
+        message.subject === 'Your Prysmic account has been deleted' &&
+        message.to === 'legacy-short@example.test',
+    );
+    expect(verifiedLetter).toHaveLength(1);
+    expect(verifiedLetter[0].text).not.toContain('abc123');
     const shortAgain = await request(server())
       .get('/users')
       .set(auth(shortLogin.body.access_token as string));
@@ -416,6 +423,19 @@ describe('account deletion and password policy against Postgres', () => {
       .send({});
     expect(missing.status).toBe(400);
 
+    const oversized = await request(server())
+      .delete('/users/me')
+      .set(auth(tokenA))
+      .send({ password: 'p'.repeat(1025) });
+    expect(oversized.status).toBe(400);
+    expect(await ownedCounts(idA)).toEqual(beforeA);
+
+    const goneRoute = await request(server())
+      .delete(`/users/${idA}`)
+      .set(auth(tokenA));
+    expect(goneRoute.status).toBe(404);
+    expect(await ownedCounts(idA)).toEqual(beforeA);
+
     const wrong = await request(server())
       .delete('/users/me')
       .set(auth(tokenA))
@@ -442,10 +462,7 @@ describe('account deletion and password policy against Postgres', () => {
     const letters = (await delivered()).filter(
       (message) => message.subject === 'Your Prysmic account has been deleted',
     );
-    expect(letters).toHaveLength(1);
-    expect(letters[0].to).toBe(ALPHA_EMAIL);
-    expect(letters[0].text).toContain('Your Prysmic account has been deleted');
-    expect(letters[0].text).not.toContain(ALPHA_PASSWORD);
+    expect(letters).toHaveLength(0);
 
     expect(await ownedCounts(idA)).toEqual(zeroOwned());
     expect(await ownedCounts(idB)).toEqual(beforeB);

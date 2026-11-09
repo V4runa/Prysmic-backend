@@ -105,15 +105,6 @@ export class UserController {
     );
   }
 
-  @Delete(':id')
-  async remove(
-    @Req() req: AuthenticatedRequest,
-    @Param('id', ParseIntPipe) id: number,
-  ): Promise<void> {
-    this.assertSelf(req.user.userId, id);
-    await this.userService.remove(Number(req.user.userId));
-  }
-
   // Another id and a missing id share one response so callers cannot tell them apart.
   private assertSelf(authUserId: number, requestedId: number): void {
     const authId = Number(authUserId);

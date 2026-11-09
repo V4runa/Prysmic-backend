@@ -39,7 +39,7 @@ export class Habit {
   @Column({ type: 'enum', enum: HabitFrequency, default: HabitFrequency.DAILY })
   frequency: HabitFrequency;
 
-  @ManyToOne(() => Note, { nullable: true })
+  @ManyToOne(() => Note, { nullable: true, onDelete: 'SET NULL' })
   originNote?: Note;
 
   @Column({ default: true })

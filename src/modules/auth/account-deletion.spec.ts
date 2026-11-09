@@ -116,6 +116,16 @@ describe('account deletion', () => {
     expect(failing.provider.sent).toHaveLength(0);
   });
 
+  it('does not email an address that was never verified', async () => {
+    const unverified = await harness(true, () => undefined, false, false);
+    await unverified.service.deleteAccount(7, PASSWORD, '127.0.0.1');
+    await unverified.service.settleMail();
+    expect(
+      unverified.queries.some((sql) => sql.includes('DELETE FROM "users"')),
+    ).toBe(true);
+    expect(unverified.provider.sent).toHaveLength(0);
+  });
+
   it('does not consume a reset link when the new password is rejected', async () => {
     const consume = jest.fn();
     const transaction = jest.fn();
@@ -204,6 +214,7 @@ async function harness(
   assertLimit: (bucket: string, email: string, ip: string) => void = () =>
     undefined,
   fail = false,
+  emailVerified = true,
 ) {
   const queries: string[] = [];
   const provider = new MemoryProvider(configured, fail);
@@ -219,6 +230,7 @@ async function harness(
                 email: 'gone@example.test',
                 username: 'gone',
                 password: hash,
+                emailVerified,
               }
             : null,
         ),

@@ -210,12 +210,4 @@ export class UserService {
       [userId, AUTH_TOKEN_PURPOSE.emailVerification],
     );
   }
-
-  async remove(id: number): Promise<void> {
-    const user = await this.userRepository.findOne({ where: { id } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    await this.userRepository.remove(user);
-  }
 }

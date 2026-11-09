@@ -1,7 +1,14 @@
-import { Column, Entity, ManyToMany, ManyToOne, PrimaryGeneratedColumn, Unique } from "typeorm";
-import { Note } from "../notes/notes.entity";
-import { User } from "../users/user.entity";
-import { Task } from "../tasks/tasks.entity";
+import {
+  Column,
+  Entity,
+  ManyToMany,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
+import { Note } from '../notes/notes.entity';
+import { User } from '../users/user.entity';
+import { Task } from '../tasks/tasks.entity';
 
 @Entity('tags')
 @Unique(['name', 'user'])
@@ -13,10 +20,11 @@ export class Tag {
   name: string;
 
   @Column({ nullable: true })
-  color?: string; 
+  color?: string;
 
-  @ManyToMany(() => Note, (note) => note.tags)
-  notes: Note[]; 
+  // tagsId on note_tags. The inverse side is what TypeORM uses for that key.
+  @ManyToMany(() => Note, (note) => note.tags, { onDelete: 'CASCADE' })
+  notes: Note[];
 
   @ManyToMany(() => Task, (task) => task.tags)
   tasks: Task[];

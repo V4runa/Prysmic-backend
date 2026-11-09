@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   MinLength,
 } from 'class-validator';
 
@@ -31,6 +32,7 @@ export class CreateUserDto {
 export class DeleteAccountDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(1024)
   password: string;
 }
 

@@ -141,9 +141,9 @@ export class AccountLifecycleService {
 
   /**
    * Confirms the current password, then deletes the account and everything
-   * it owns. The confirmation letter is sent after the commit and is skipped
-   * when email is not configured. A delivery failure does not change the
-   * outcome of the delete.
+   * it owns. The confirmation letter goes out after the commit, and only
+   * when the address was verified. A missing mail config or a delivery
+   * failure does not change the outcome of the delete.
    */
   async deleteAccount(
     userId: number,
@@ -165,11 +165,12 @@ export class AccountLifecycleService {
     if (!passwordMatches) throw new UnauthorizedException(INVALID_CREDENTIALS);
 
     const email = user.email;
+    const verified = user.emailVerified === true;
     const removed = await this.dataSource.transaction((manager) =>
       purgeAccount(manager, user.id),
     );
     if (!removed) throw new UnauthorizedException(INVALID_CREDENTIALS);
-    this.sendAccountDeletedEmail(email);
+    if (verified) this.sendAccountDeletedEmail(email);
   }
 
   sendAccountDeletedEmail(to: string): void {

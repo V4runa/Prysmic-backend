@@ -38,11 +38,11 @@ const TOO_COMMON = 'That password is too common. Choose a different one.';
 /**
  * Top ~10,000 breached passwords, bundled from SecLists
  * Passwords/Common-Credentials/10k-most-common.txt (MIT).
- * Read once from disk. Never fetched over the network.
+ * Loaded when this module is imported so a missing file fails boot,
+ * not the first signup. Never fetched over the network.
  */
 const COMMON_PASSWORD_FILE = 'common-passwords.txt';
-
-let cachedCommon: Set<string> | undefined;
+const COMMON_PASSWORDS = loadCommonPasswords();
 
 /**
  * Rules for a password that is about to be stored. Call this from signup,
@@ -73,13 +73,13 @@ export function assertPasswordAllowed(
   if (username && folded === username) {
     throw new BadRequestException(MATCHES_USERNAME);
   }
-  if (commonPasswords().has(folded)) {
+  if (COMMON_PASSWORDS.has(folded)) {
     throw new BadRequestException(TOO_COMMON);
   }
 }
 
 export function commonPasswordCount(): number {
-  return commonPasswords().size;
+  return COMMON_PASSWORDS.size;
 }
 
 function fold(value: string | null | undefined): string {
@@ -93,8 +93,7 @@ function emailLocalPart(email: string): string {
   return email.slice(0, at);
 }
 
-function commonPasswords(): Set<string> {
-  if (cachedCommon) return cachedCommon;
+function loadCommonPasswords(): Set<string> {
   const text = readFileSync(commonPasswordPath(), 'utf8').replace(
     /^\uFEFF/,
     '',
@@ -108,7 +107,6 @@ function commonPasswords(): Set<string> {
   if (set.size < 1000) {
     throw new Error('The common password list failed to load.');
   }
-  cachedCommon = set;
   return set;
 }
 
