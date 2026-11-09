@@ -189,7 +189,10 @@ export class UserService {
     const updated = rowsFromQuery<{ id: number }>(
       await manager.query(
         `UPDATE "users"
-         SET "password" = $1, "sessionVersion" = "sessionVersion" + 1, "updatedAt" = NOW()
+         SET "password" = $1,
+             "sessionVersion" = "sessionVersion" + 1,
+             "emailVerified" = true,
+             "updatedAt" = NOW()
          WHERE "id" = $2
          RETURNING "id"`,
         [passwordHash, userId],

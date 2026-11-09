@@ -1,10 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-} from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
 import {
@@ -24,11 +19,11 @@ import {
 import { AuthRateLimiter, type RateLimitBucket } from './rate-limit';
 import { hashPassword } from './password';
 import { AuthTokenService } from './tokens/auth-token.service';
-import { generateRawToken, hashToken } from './tokens/token-hash';
 
 @Injectable()
 export class AccountLifecycleService {
   private readonly logger = new Logger(AccountLifecycleService.name);
+  private readonly pendingMail = new Set<Promise<void>>();
 
   constructor(
     private readonly users: UserService,
@@ -39,49 +34,54 @@ export class AccountLifecycleService {
   ) {}
 
   /**
-   * Signup path. Failure is logged and swallowed so account creation still
-   * works before email is configured. The address stays unverified.
+   * Signup path. Does not wait for the provider. A missing mail config is
+   * logged and the address stays unverified; signup itself still succeeds.
    */
-  async sendVerificationEmail(user: User): Promise<void> {
+  sendVerificationEmail(user: User): void {
     if (user.emailVerified) return;
-    this.email.assertReady();
-    await this.deliverVerification(user);
+    if (!this.email.isReady()) {
+      this.logger.error(
+        `Verification email was not sent for user ${user.id}: ${EMAIL_UNAVAILABLE}`,
+      );
+      return;
+    }
+    this.dispatch(async () => {
+      await this.deliverVerification(user);
+    });
   }
 
-  async resendVerification(email: string, ip: string): Promise<void> {
-    await this.withGenericDelivery('email_resend', email, ip, async (user) => {
+  resendVerification(email: string, ip: string): void {
+    this.scheduleDelivery('email_resend', email, ip, async (user) => {
       if (!user || user.emailVerified) return;
       await this.deliverVerification(user);
     });
   }
 
-  async requestPasswordReset(email: string, ip: string): Promise<void> {
-    await this.withGenericDelivery(
-      'password_reset',
-      email,
-      ip,
-      async (user) => {
-        if (!user) {
-          // Spend a hash so a missing account is not the only cheap path.
-          hashToken(generateRawToken());
-          return;
-        }
-        const raw = await this.tokens.issue(
-          user.id,
-          AUTH_TOKEN_PURPOSE.passwordReset,
-          RESET_TTL_MS,
-        );
-        const rendered = renderPasswordResetEmail(
-          resetLink(this.email.appUrl(), raw),
-        );
-        await this.email.send({ to: user.email, ...rendered });
-      },
-    );
+  requestPasswordReset(email: string, ip: string): void {
+    this.scheduleDelivery('password_reset', email, ip, async (user) => {
+      if (!user) return;
+      const raw = await this.tokens.issue(
+        user.id,
+        AUTH_TOKEN_PURPOSE.passwordReset,
+        RESET_TTL_MS,
+      );
+      const rendered = renderPasswordResetEmail(
+        resetLink(this.email.appUrl(), raw),
+      );
+      await this.email.send({ to: user.email, ...rendered });
+    });
+  }
+
+  /** Tests wait for letters that were handed off after the HTTP response. */
+  async settleMail(): Promise<void> {
+    while (this.pendingMail.size > 0) {
+      await Promise.allSettled([...this.pendingMail]);
+    }
   }
 
   async verifyEmail(rawToken: string): Promise<void> {
     const token = requiredToken(rawToken);
-    await this.dataSource.transaction(async (manager) => {
+    await this.runLink(async (manager) => {
       const userId = await this.tokens.consume(
         manager,
         token,
@@ -96,7 +96,7 @@ export class AccountLifecycleService {
   async resetPassword(rawToken: string, password: string): Promise<void> {
     const token = requiredToken(rawToken);
     const passwordHash = await hashPassword(password);
-    await this.dataSource.transaction(async (manager) => {
+    await this.runLink(async (manager) => {
       const userId = await this.tokens.consume(
         manager,
         token,
@@ -130,30 +130,58 @@ export class AccountLifecycleService {
   }
 
   /**
-   * Config and rate limits run before the lookup and do not depend on whether
-   * the account exists. A later send failure is still 503; that can differ
-   * from the missing-account path while the provider is down.
+   * Config and rate limits finish before the response and do not depend on
+   * whether the account exists. Lookup and delivery continue afterwards so a
+   * real account and an unknown address return together. Provider failures
+   * are logged, not returned. Not-configured is still 503, before any lookup.
    */
-  private async withGenericDelivery(
+  private scheduleDelivery(
     bucket: RateLimitBucket,
     email: string,
     ip: string,
     deliver: (user: User | null) => Promise<void>,
-  ): Promise<void> {
+  ): void {
     this.email.assertReady();
     const normalized = email.trim().toLowerCase();
     this.rateLimiter.assert(bucket, normalized, ip);
-    const matches = await this.users.findUsersByEmail(normalized);
-    const user = matches.length === 1 ? matches[0] : null;
-    try {
+    this.dispatch(async () => {
+      const matches = await this.users.findUsersByEmail(normalized);
+      const user = matches.length === 1 ? matches[0] : null;
       await deliver(user);
+    });
+  }
+
+  private dispatch(work: () => Promise<void>): void {
+    let task: Promise<void> = Promise.resolve();
+    task = work()
+      .catch((err: unknown) => {
+        const detail = err instanceof Error ? err.message : 'unknown error';
+        this.logger.error(`Email delivery failed: ${detail}`);
+      })
+      .finally(() => {
+        this.pendingMail.delete(task);
+      });
+    this.pendingMail.add(task);
+  }
+
+  private async runLink(
+    work: (manager: EntityManager) => Promise<void>,
+  ): Promise<void> {
+    try {
+      await this.dataSource.transaction(work);
     } catch (err) {
-      if (err instanceof ServiceUnavailableException) throw err;
-      const detail = err instanceof Error ? err.message : 'unknown error';
-      this.logger.error(`Email delivery failed: ${detail}`);
-      throw new ServiceUnavailableException(EMAIL_UNAVAILABLE);
+      if (err instanceof BadRequestException) throw err;
+      if (isDeadlock(err)) throw new BadRequestException(INVALID_LINK);
+      throw err;
     }
   }
+}
+
+function isDeadlock(err: unknown): boolean {
+  if (!(err instanceof QueryFailedError)) return false;
+  const driver = (err as QueryFailedError & { driverError?: { code?: string } })
+    .driverError;
+  return driver?.code === '40P01';
 }
 
 function requiredToken(rawToken: string): string {

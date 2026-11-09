@@ -1,10 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
-import {
-  AUTH_TOKEN_PURPOSE,
-  type AuthTokenPurpose,
-} from '../account.constants';
+import { type AuthTokenPurpose } from '../account.constants';
 import { AuthToken } from './auth-token.entity';
 import { rowsFromQuery } from '../../../database/query-rows';
 import { generateRawToken, hashToken, tokenHashesEqual } from './token-hash';
@@ -20,6 +17,8 @@ type TokenRow = {
 
 @Injectable()
 export class AuthTokenService {
+  private readonly logger = new Logger(AuthTokenService.name);
+
   constructor(
     @InjectRepository(AuthToken)
     private readonly tokens: Repository<AuthToken>,
@@ -30,6 +29,7 @@ export class AuthTokenService {
     purpose: AuthTokenPurpose,
     ttlMs: number,
   ): Promise<string> {
+    await this.deleteStaleTokens();
     const raw = generateRawToken();
     const row = this.tokens.create({
       userId,
@@ -65,6 +65,16 @@ export class AuthTokenService {
     const stored = row?.tokenHash ?? DUMMY_HASH;
     if (!tokenHashesEqual(stored, computed) || !row) return null;
 
+    // Lock the account before any token row. Two reset links consumed together
+    // used to lock their tokens first and then deadlock on the user update.
+    const locked = rowsFromQuery<{ id: number }>(
+      await manager.query(
+        `SELECT "id" FROM "users" WHERE "id" = $1 FOR UPDATE`,
+        [row.userId],
+      ),
+    );
+    if (!locked.length) return null;
+
     const updated = rowsFromQuery<{ id: number; userId: number }>(
       await manager.query(
         `UPDATE "auth_tokens"
@@ -90,13 +100,16 @@ export class AuthTokenService {
     );
   }
 
-  /** Used when an address changes, outside the confirm transaction. */
-  async revokeUnusedVerification(userId: number): Promise<void> {
-    await this.tokens.manager.query(
-      `UPDATE "auth_tokens"
-       SET "usedAt" = NOW()
-       WHERE "userId" = $1 AND "purpose" = $2 AND "usedAt" IS NULL`,
-      [userId, AUTH_TOKEN_PURPOSE.emailVerification],
-    );
+  private async deleteStaleTokens(): Promise<void> {
+    try {
+      await this.tokens.manager.query(
+        `DELETE FROM "auth_tokens"
+         WHERE ("usedAt" IS NOT NULL AND "usedAt" < NOW() - INTERVAL '1 day')
+            OR "expiresAt" < NOW() - INTERVAL '1 day'`,
+      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown error';
+      this.logger.warn(`Could not prune old auth tokens: ${detail}`);
+    }
   }
 }

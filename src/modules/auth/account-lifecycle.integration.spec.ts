@@ -20,8 +20,8 @@ import { EMAIL_PROVIDER } from './email/email.provider.factory';
 import type { EmailProvider, OutboundEmail } from './email/email.types';
 import { AuthRateLimiter } from './rate-limit';
 import { hashToken } from './tokens/token-hash';
-
-const PG = '/usr/lib/postgresql/16/bin';
+import { AccountLifecycleService } from './account-lifecycle.service';
+import { pgBinDir } from '../../testing/pg-bin';
 const PORT = 54348;
 const DATA_DIR = '/tmp/prysmic-lifecycle-pg';
 const LOG = '/tmp/prysmic-lifecycle-pg.log';
@@ -205,13 +205,13 @@ describe('account lifecycle against disposable Postgres', () => {
   afterAll(async () => {
     await app?.close();
     if (admin?.isInitialized) await admin.destroy();
-    spawnSync(`${PG}/pg_ctl`, ['-D', DATA_DIR, '-w', 'stop']);
+    spawnSync(`${pgBinDir()}/pg_ctl`, ['-D', DATA_DIR, '-w', 'stop']);
     spawnSync('rm', ['-rf', DATA_DIR]);
     restoreEnv(previousEnv);
   });
 
-  beforeEach(() => {
-    mailbox().clear();
+  beforeEach(async () => {
+    await clearMail();
     app.get(AuthRateLimiter).clear();
   });
 
@@ -255,7 +255,7 @@ describe('account lifecycle against disposable Postgres', () => {
     expect(before.body[0].email).toBe('wanderer@example.test');
     expect(before.body[0].emailVerified).toBe(false);
 
-    const linkToken = tokenFrom(onlyEmail());
+    const linkToken = tokenFrom(await onlyEmail());
     const rows = await admin.query(
       `SELECT "tokenHash" FROM "auth_tokens" WHERE "userId" = $1`,
       [before.body[0].id],
@@ -295,7 +295,7 @@ describe('account lifecycle against disposable Postgres', () => {
       password: 'late-passphrase',
     });
     expect(signup.status).toBe(201);
-    const linkToken = tokenFrom(onlyEmail());
+    const linkToken = tokenFrom(await onlyEmail());
     await admin.query(
       `UPDATE "auth_tokens" SET "expiresAt" = NOW() - interval '1 minute'
        WHERE "tokenHash" = $1`,
@@ -319,7 +319,7 @@ describe('account lifecycle against disposable Postgres', () => {
       email: 'resend@example.test',
       password: 'resend-passphrase',
     });
-    mailbox().clear();
+    await clearMail();
     const known = await request(server())
       .post('/auth/email/resend')
       .send({ email: 'resend@example.test' });
@@ -331,17 +331,18 @@ describe('account lifecycle against disposable Postgres', () => {
     expect(unknown.body).toEqual(known.body);
     expect(known.body).toEqual({ message: EMAIL_REQUEST_ACCEPTED });
     expect(JSON.stringify(unknown.body)).not.toContain('resend@example.test');
-    expect(mailbox().outbox).toHaveLength(1);
-    expect(mailbox().outbox[0].to).toBe('resend@example.test');
+    const resent = await delivered();
+    expect(resent).toHaveLength(1);
+    expect(resent[0].to).toBe('resend@example.test');
 
-    const token = tokenFrom(onlyEmail());
+    const token = tokenFrom(resent[0]);
     await request(server()).post('/auth/email/verify').send({ token });
-    mailbox().clear();
+    await clearMail();
     const verified = await request(server())
       .post('/auth/email/resend')
       .send({ email: 'resend@example.test' });
     expect(verified.body).toEqual(unknown.body);
-    expect(mailbox().outbox).toHaveLength(0);
+    expect(await delivered()).toHaveLength(0);
   });
 
   it('rate limits resend per address and per IP with the same error', async () => {
@@ -350,7 +351,7 @@ describe('account lifecycle against disposable Postgres', () => {
       email: 'limited@example.test',
       password: 'limited-passphrase',
     });
-    mailbox().clear();
+    await clearMail();
     app.get(AuthRateLimiter).clear();
 
     const responses: Response[] = [];
@@ -372,7 +373,7 @@ describe('account lifecycle against disposable Postgres', () => {
     expect(JSON.stringify(responses[3].body)).not.toContain(
       'limited@example.test',
     );
-    expect(mailbox().outbox).toHaveLength(3);
+    expect(await delivered()).toHaveLength(3);
 
     app.get(AuthRateLimiter).clear();
     const ipResponses: Response[] = [];
@@ -391,6 +392,25 @@ describe('account lifecycle against disposable Postgres', () => {
     expect(JSON.stringify(ipResponses[4].body)).not.toContain(
       'ip-4@example.test',
     );
+
+    app.get(AuthRateLimiter).clear();
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const ok = await request(server())
+        .post('/auth/email/resend')
+        .set('X-Real-IP', '203.0.113.10')
+        .send({ email: `edge-${attempt}@example.test` });
+      expect(ok.status).toBe(200);
+    }
+    const sameEdge = await request(server())
+      .post('/auth/email/resend')
+      .set('X-Real-IP', '203.0.113.10')
+      .send({ email: 'edge-blocked@example.test' });
+    expect(sameEdge.status).toBe(429);
+    const otherEdge = await request(server())
+      .post('/auth/email/resend')
+      .set('X-Real-IP', '203.0.113.20')
+      .send({ email: 'edge-other@example.test' });
+    expect(otherEdge.status).toBe(200);
   });
 
   it('resets a password once, retires the other links, and drops older sessions', async () => {
@@ -404,7 +424,7 @@ describe('account lifecycle against disposable Postgres', () => {
     expect(profile.status).toBe(200);
     const userId = profile.body[0].id as number;
 
-    mailbox().clear();
+    await clearMail();
     app.get(AuthRateLimiter).clear();
     const first = await request(server())
       .post('/auth/password/forgot')
@@ -426,9 +446,10 @@ describe('account lifecycle against disposable Postgres', () => {
       .post('/auth/password/forgot')
       .send({ email: 'Reset@example.test' });
     expect(second.body).toEqual(first.body);
-    expect(mailbox().outbox).toHaveLength(2);
-    const firstToken = tokenFrom(mailbox().outbox[0]);
-    const secondToken = tokenFrom(mailbox().outbox[1]);
+    const sent = await delivered();
+    expect(sent).toHaveLength(2);
+    const firstToken = tokenFrom(sent[0]);
+    const secondToken = tokenFrom(sent[1]);
     const stored = await admin.query(
       `SELECT "tokenHash" FROM "auth_tokens"
        WHERE "userId" = $1 AND "purpose" = 'password_reset'`,
@@ -469,11 +490,13 @@ describe('account lifecycle against disposable Postgres', () => {
       password: 'new-passphrase',
     });
     expect(fresh.status).toBe(201);
+    expect(fresh.body.emailVerified).toBe(true);
     const after = await request(server())
       .get('/users')
       .set(auth(fresh.body.access_token as string));
     expect(after.status).toBe(200);
     expect(after.body[0].id).toBe(userId);
+    expect(after.body[0].emailVerified).toBe(true);
     const version = await admin.query(
       `SELECT "sessionVersion" FROM "users" WHERE "id" = $1`,
       [userId],
@@ -488,18 +511,56 @@ describe('account lifecycle against disposable Postgres', () => {
     expect(JSON.stringify(after.body)).not.toContain(hash[0].password);
   });
 
+  it('returns the usual invalid link when two resets race', async () => {
+    await request(server()).post('/auth/signup').send({
+      username: 'race-wanderer',
+      email: 'race@example.test',
+      password: 'old-race-passphrase',
+    });
+    await clearMail();
+    app.get(AuthRateLimiter).clear();
+    await request(server())
+      .post('/auth/password/forgot')
+      .send({ email: 'race@example.test' });
+    await request(server())
+      .post('/auth/password/forgot')
+      .send({ email: 'race@example.test' });
+    const sent = await delivered();
+    expect(sent).toHaveLength(2);
+
+    const [left, right] = await Promise.all([
+      request(server())
+        .post('/auth/password/reset')
+        .send({ token: tokenFrom(sent[0]), password: 'race-passphrase-a' }),
+      request(server())
+        .post('/auth/password/reset')
+        .send({ token: tokenFrom(sent[1]), password: 'race-passphrase-b' }),
+    ]);
+    expect([left.status, right.status].sort()).toEqual([200, 400]);
+    const failed = left.status === 400 ? left : right;
+    expect(failed.body.message).toBe(INVALID_LINK);
+    const winner =
+      left.status === 200 ? 'race-passphrase-a' : 'race-passphrase-b';
+    const login = await request(server()).post('/auth/login').send({
+      identifier: 'race@example.test',
+      password: winner,
+    });
+    expect(login.status).toBe(201);
+    expect(login.body.emailVerified).toBe(true);
+  });
+
   it('does not change the password when the reset link has expired', async () => {
     await request(server()).post('/auth/signup').send({
       username: 'expired-reset',
       email: 'expired-reset@example.test',
       password: 'still-passphrase',
     });
-    mailbox().clear();
+    await clearMail();
     app.get(AuthRateLimiter).clear();
     await request(server())
       .post('/auth/password/forgot')
       .send({ email: 'expired-reset@example.test' });
-    const linkToken = tokenFrom(onlyEmail());
+    const linkToken = tokenFrom(await onlyEmail());
     await admin.query(
       `UPDATE "auth_tokens" SET "expiresAt" = NOW() - interval '1 minute'
        WHERE "tokenHash" = $1`,
@@ -608,13 +669,13 @@ describe('account lifecycle against disposable Postgres', () => {
       email: 'moving@example.test',
       password: 'moving-passphrase',
     });
-    const firstToken = tokenFrom(onlyEmail());
-    mailbox().clear();
+    const firstToken = tokenFrom(await onlyEmail());
+    await clearMail();
     app.get(AuthRateLimiter).clear();
     await request(server())
       .post('/auth/email/resend')
       .send({ email: 'moving@example.test' });
-    const unusedToken = tokenFrom(onlyEmail());
+    const unusedToken = tokenFrom(await onlyEmail());
     const confirmed = await request(server())
       .post('/auth/email/verify')
       .send({ token: firstToken });
@@ -680,8 +741,22 @@ function mailbox(): ConsoleEmailProvider {
   return provider;
 }
 
-function onlyEmail(): OutboundEmail {
-  const sent = mailbox().outbox;
+async function settle(): Promise<void> {
+  await app().get(AccountLifecycleService).settleMail();
+}
+
+async function clearMail(): Promise<void> {
+  await settle();
+  mailbox().clear();
+}
+
+async function delivered(): Promise<OutboundEmail[]> {
+  await settle();
+  return mailbox().outbox;
+}
+
+async function onlyEmail(): Promise<OutboundEmail> {
+  const sent = await delivered();
   if (sent.length !== 1) {
     throw new Error(`expected one email, found ${sent.length}`);
   }
@@ -697,14 +772,14 @@ function tokenFrom(message: OutboundEmail): string {
 function startPostgres(): void {
   spawnSync('rm', ['-rf', DATA_DIR]);
   const init = spawnSync(
-    `${PG}/initdb`,
+    `${pgBinDir()}/initdb`,
     ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--no-instructions'],
     { encoding: 'utf8' },
   );
   if (init.status !== 0) {
     throw new Error(init.stderr || init.stdout || 'initdb failed');
   }
-  const started = spawnSync(`${PG}/pg_ctl`, [
+  const started = spawnSync(`${pgBinDir()}/pg_ctl`, [
     '-D',
     DATA_DIR,
     '-l',
@@ -718,7 +793,7 @@ function startPostgres(): void {
     const log = existsSync(LOG) ? readFileSync(LOG, 'utf8') : '';
     throw new Error(`pg_ctl start failed\n${log}`);
   }
-  const created = spawnSync(`${PG}/createdb`, [
+  const created = spawnSync(`${pgBinDir()}/createdb`, [
     '-h',
     '127.0.0.1',
     '-p',

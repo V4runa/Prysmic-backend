@@ -31,11 +31,9 @@ export class SlidingWindowRateLimiter {
 
   consume(key: string, limit: number, windowMs: number): ConsumeResult {
     const now = this.now();
-    const recent = (this.hits.get(key) ?? []).filter(
-      (stamp) => stamp > now - windowMs,
-    );
+    this.prune(now, windowMs);
+    const recent = this.hits.get(key) ?? [];
     if (recent.length >= limit) {
-      this.hits.set(key, recent);
       const retryAfterSec = Math.max(
         1,
         Math.ceil((recent[0] + windowMs - now) / 1000),
@@ -47,8 +45,22 @@ export class SlidingWindowRateLimiter {
     return { allowed: true };
   }
 
+  /** Keys still holding a timestamp inside the current window. */
+  size(): number {
+    return this.hits.size;
+  }
+
   clear(): void {
     this.hits.clear();
+  }
+
+  private prune(now: number, windowMs: number): void {
+    const oldest = now - windowMs;
+    for (const [key, stamps] of this.hits) {
+      const recent = stamps.filter((stamp) => stamp > oldest);
+      if (recent.length === 0) this.hits.delete(key);
+      else if (recent.length !== stamps.length) this.hits.set(key, recent);
+    }
   }
 }
 
@@ -83,21 +95,20 @@ export class AuthRateLimiter {
       this.config.get<string | number>('AUTH_RATE_LIMIT_IP'),
       DEFAULT_RATE_LIMIT_IP,
     );
-    const account = this.windows.consume(
-      `${bucket}:email:${email}`,
-      accountLimit,
-      windowMs,
-    );
+    // The IP bucket is decided first. A blocked address must not consume the
+    // per-email budget, or one shared proxy IP would burn every account.
     const network = this.windows.consume(
       `${bucket}:ip:${normalizeIp(ip)}`,
       ipLimit,
       windowMs,
     );
-    if (!account.allowed || !network.allowed) {
-      const accountWait = account.allowed ? 0 : account.retryAfterSec;
-      const ipWait = network.allowed ? 0 : network.retryAfterSec;
-      throw new RateLimitError(Math.max(accountWait, ipWait, 1));
-    }
+    if (!network.allowed) throw new RateLimitError(network.retryAfterSec);
+    const account = this.windows.consume(
+      `${bucket}:email:${email}`,
+      accountLimit,
+      windowMs,
+    );
+    if (!account.allowed) throw new RateLimitError(account.retryAfterSec);
   }
 
   clear(): void {

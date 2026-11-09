@@ -3,11 +3,12 @@ import {
   ClassSerializerInterceptor,
   Controller,
   HttpCode,
-  Ip,
   Post,
+  Req,
   UseFilters,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import {
   EmailRequestDto,
@@ -19,7 +20,7 @@ import {
 import { AccountLifecycleService } from './account-lifecycle.service';
 import { EMAIL_REQUEST_ACCEPTED } from './account.constants';
 import { RateLimitFilter } from './rate-limit.filter';
-import { normalizeIp } from './rate-limit';
+import { clientIp } from './client-ip';
 
 @Controller('auth')
 @UseFilters(RateLimitFilter)
@@ -49,15 +50,15 @@ export class AuthController {
 
   @Post('email/resend')
   @HttpCode(200)
-  async resendVerification(@Body() dto: EmailRequestDto, @Ip() ip: string) {
-    await this.lifecycle.resendVerification(dto.email, normalizeIp(ip));
+  resendVerification(@Body() dto: EmailRequestDto, @Req() req: Request) {
+    this.lifecycle.resendVerification(dto.email, clientIp(req));
     return { message: EMAIL_REQUEST_ACCEPTED };
   }
 
   @Post('password/forgot')
   @HttpCode(200)
-  async forgotPassword(@Body() dto: EmailRequestDto, @Ip() ip: string) {
-    await this.lifecycle.requestPasswordReset(dto.email, normalizeIp(ip));
+  forgotPassword(@Body() dto: EmailRequestDto, @Req() req: Request) {
+    this.lifecycle.requestPasswordReset(dto.email, clientIp(req));
     return { message: EMAIL_REQUEST_ACCEPTED };
   }
 

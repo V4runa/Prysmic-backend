@@ -1,7 +1,6 @@
 import {
   ConflictException,
   Injectable,
-  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -23,8 +22,6 @@ interface SessionUser {
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
@@ -94,14 +91,9 @@ export class AuthService {
     // Best-effort: seeding never blocks issuing the access token.
     await this.onboardingService.seedSampleData(user.id);
 
-    try {
-      await this.lifecycle.sendVerificationEmail(user);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : 'unknown error';
-      this.logger.error(
-        `Verification email was not sent for user ${user.id}: ${detail}`,
-      );
-    }
+    // The letter goes out after the response. A missing mail config is logged
+    // inside the lifecycle service and does not fail signup.
+    this.lifecycle.sendVerificationEmail(user);
 
     return this.issueSession(user);
   }

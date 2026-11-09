@@ -9,8 +9,8 @@ dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false });
-  // Railway terminates TLS one hop in front of the app. Trust that hop so
-  // password-reset rate limits see the client address, not the proxy.
+  // Fallback only. Rate limits prefer X-Real-IP, which Railway's edge sets to
+  // the visitor. req.ip alone can be a shared proxy hop.
   const http = app.getHttpAdapter().getInstance() as {
     set: (setting: string, value: number) => void;
   };

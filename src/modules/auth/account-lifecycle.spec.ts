@@ -15,9 +15,16 @@ import {
   renderVerificationEmail,
 } from './email/email.templates';
 import { AuthService } from './auth.service';
-import { readPositiveInt, SlidingWindowRateLimiter } from './rate-limit';
+import {
+  AuthRateLimiter,
+  RateLimitError,
+  readPositiveInt,
+  SlidingWindowRateLimiter,
+} from './rate-limit';
 import { sessionVersionMatches } from './session-version';
 import { rowsFromQuery } from '../../database/query-rows';
+import { clientIp } from './client-ip';
+import { resolvePgBinDir } from '../../testing/pg-bin';
 import { hashToken, tokenHashesEqual } from './tokens/token-hash';
 import { User } from '../users/user.entity';
 
@@ -54,6 +61,46 @@ describe('account lifecycle units', () => {
     expect(sessionVersionMatches(-1, 0)).toBe(false);
   });
 
+  it('reads the Railway client address before the proxy hop', () => {
+    expect(
+      clientIp({
+        ip: '10.0.0.4',
+        headers: { 'x-real-ip': '203.0.113.10' },
+      }),
+    ).toBe('203.0.113.10');
+    expect(
+      clientIp({
+        ip: '::ffff:127.0.0.1',
+        headers: { 'x-real-ip': [' 203.0.113.8 ', '10.1.1.1'] },
+      }),
+    ).toBe('203.0.113.8');
+    expect(clientIp({ ip: '::ffff:192.0.2.4', headers: {} })).toBe('192.0.2.4');
+    expect(clientIp({ ip: '192.0.2.5', headers: { 'x-real-ip': '   ' } })).toBe(
+      '192.0.2.5',
+    );
+    expect(clientIp({ headers: {} })).toBe('unknown');
+  });
+
+  it('prefers PG_BIN_DIR and otherwise discovers a packaged install', () => {
+    const exists = (path: string) =>
+      path === '/custom/pg/initdb' ||
+      path === '/usr/lib/postgresql/16/bin/initdb';
+    expect(resolvePgBinDir({ PG_BIN_DIR: '/custom/pg' }, exists)).toBe(
+      '/custom/pg',
+    );
+    expect(resolvePgBinDir({ PG_BIN_DIR: '/missing' }, exists)).toBe(
+      '/usr/lib/postgresql/16/bin',
+    );
+    expect(
+      resolvePgBinDir(
+        {},
+        (path) => path === '/opt/homebrew/bin/initdb',
+        () => '/opt/homebrew/bin/initdb',
+      ),
+    ).toBe('/opt/homebrew/bin');
+    expect(() => resolvePgBinDir({}, () => false)).toThrow(/PG_BIN_DIR/);
+  });
+
   it('rate limits each key inside a sliding window', () => {
     let now = 1_000;
     const limiter = new SlidingWindowRateLimiter(() => now);
@@ -65,6 +112,32 @@ describe('account lifecycle units', () => {
     expect(limiter.consume('other', 2, 1_000).allowed).toBe(true);
     now += 1_001;
     expect(limiter.consume('email', 2, 1_000).allowed).toBe(true);
+  });
+
+  it('forgets expired keys and does not charge an email when the IP is blocked', () => {
+    let now = 0;
+    const window = new SlidingWindowRateLimiter(() => now);
+    window.consume('old', 5, 1_000);
+    now = 5_000;
+    window.consume('fresh', 5, 1_000);
+    expect(window.size()).toBe(1);
+
+    const limiter = new AuthRateLimiter(
+      config({
+        AUTH_RATE_LIMIT_ACCOUNT: '2',
+        AUTH_RATE_LIMIT_IP: '1',
+        AUTH_RATE_LIMIT_WINDOW_MS: '60000',
+      }),
+    );
+    limiter.assert('password_reset', 'a@example.test', '203.0.113.1');
+    expect(() =>
+      limiter.assert('password_reset', 'b@example.test', '203.0.113.1'),
+    ).toThrow(RateLimitError);
+    limiter.assert('password_reset', 'b@example.test', '203.0.113.2');
+    limiter.assert('password_reset', 'b@example.test', '203.0.113.3');
+    expect(() =>
+      limiter.assert('password_reset', 'b@example.test', '203.0.113.4'),
+    ).toThrow(RateLimitError);
   });
 
   it('falls back when a rate-limit env value is unusable', () => {
@@ -194,7 +267,7 @@ describe('account lifecycle units', () => {
     }
   });
 
-  it('fails a reset request before looking up the account when email is down', async () => {
+  it('fails a reset request before looking up the account when email is down', () => {
     const findUsersByEmail = jest.fn();
     const service = new AccountLifecycleService(
       { findUsersByEmail } as never,
@@ -206,12 +279,12 @@ describe('account lifecycle units', () => {
       { assert: () => undefined } as never,
       {} as never,
     );
-    await expect(
+    expect(() =>
       service.requestPasswordReset('known@example.test', '127.0.0.1'),
-    ).rejects.toThrow(EMAIL_UNAVAILABLE);
-    await expect(
+    ).toThrow(EMAIL_UNAVAILABLE);
+    expect(() =>
       service.requestPasswordReset('missing@example.test', '127.0.0.1'),
-    ).rejects.toThrow(EMAIL_UNAVAILABLE);
+    ).toThrow(EMAIL_UNAVAILABLE);
     expect(findUsersByEmail).not.toHaveBeenCalled();
   });
 
