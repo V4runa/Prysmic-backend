@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './user.entity';
+import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { UserService } from './user.service';
 import { UserController } from './user.controller';
 import { NotesModule } from '../notes/notes.module';
@@ -10,7 +11,7 @@ import { MoodModule } from '../moods/mood.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, AuthToken]),
     forwardRef(() => NotesModule),
     forwardRef(() => AuthModule),
     forwardRef(() => HabitModule),

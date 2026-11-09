@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { UserService } from '../users/user.service';
 import { CalendarEvent } from '../calendar/calendar-event.entity';
 import { HabitCheck } from '../habits/habit-check.entity';
 import { Habit } from '../habits/habit.entity';
@@ -736,6 +737,18 @@ describe('Account export', () => {
       providers: [
         ExportService,
         JwtStrategy,
+        {
+          provide: UserService,
+          useValue: {
+            findById: (id: number) =>
+              Promise.resolve({
+                id,
+                sessionVersion: 0,
+                username: 'synth',
+                email: 'synth@example.test',
+              }),
+          },
+        },
         { provide: DataSource, useValue: memory.dataSource },
       ],
     }).compile();

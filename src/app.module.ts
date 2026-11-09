@@ -30,6 +30,7 @@ import { AppController } from './app.controller';
           DB_SSL: config.get<string>('DB_SSL'),
           RUNNING_IN_DOCKER: config.get<string>('RUNNING_IN_DOCKER'),
           NODE_ENV: config.get<string>('NODE_ENV'),
+          DB_LOGGING: config.get<string>('DB_LOGGING'),
         }),
         autoLoadEntities: true,
       }),

@@ -14,8 +14,7 @@ import { User } from '../users/user.entity';
 import { EXPORT_BUDGET, type ExportBudget } from './export.constants';
 import { ExportService } from './export.service';
 import { spawnSync } from 'child_process';
-
-const PG = '/usr/lib/postgresql/16/bin';
+import { pgBinDir } from '../../testing/pg-bin';
 const PORT = 54346;
 const DATA_DIR = '/tmp/export-gate-pg';
 const HASH_A = 'synthetic-hash-pg-alpha';
@@ -47,14 +46,14 @@ describe('Account export against disposable Postgres', () => {
   beforeAll(async () => {
     spawnSync('rm', ['-rf', DATA_DIR]);
     const init = spawnSync(
-      `${PG}/initdb`,
+      `${pgBinDir()}/initdb`,
       ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--no-instructions'],
       { encoding: 'utf8' },
     );
     if (init.status !== 0) {
       throw new Error(init.stderr || init.stdout || 'initdb failed');
     }
-    const start = spawnSync(`${PG}/pg_ctl`, [
+    const start = spawnSync(`${pgBinDir()}/pg_ctl`, [
       '-D',
       DATA_DIR,
       '-l',
@@ -66,7 +65,7 @@ describe('Account export against disposable Postgres', () => {
     if (start.status !== 0) {
       throw new Error('pg_ctl start failed');
     }
-    spawnSync(`${PG}/createdb`, [
+    spawnSync(`${pgBinDir()}/createdb`, [
       '-h',
       '127.0.0.1',
       '-p',
@@ -114,7 +113,7 @@ describe('Account export against disposable Postgres', () => {
 
   afterAll(async () => {
     if (dataSource?.isInitialized) await dataSource.destroy();
-    spawnSync(`${PG}/pg_ctl`, ['-D', DATA_DIR, 'stop']);
+    spawnSync(`${pgBinDir()}/pg_ctl`, ['-D', DATA_DIR, 'stop']);
     spawnSync('rm', ['-rf', DATA_DIR]);
   });
 

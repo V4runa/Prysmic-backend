@@ -11,6 +11,7 @@ export type DbEnv = {
   DB_SSL?: string;
   RUNNING_IN_DOCKER?: string;
   NODE_ENV?: string;
+  DB_LOGGING?: string;
 };
 
 /**
@@ -59,7 +60,7 @@ export function getPostgresConnectionCore(env: DbEnv): DataSourceOptions {
   const base: DataSourceOptions = {
     type: 'postgres',
     synchronize: false,
-    logging: env.NODE_ENV !== 'production',
+    logging: env.DB_LOGGING === 'false' ? false : env.NODE_ENV !== 'production',
     ssl: enableSSL ? { rejectUnauthorized: false } : false,
     // Pool + timeout tuning for a managed host (Railway/Render). Without these,
     // node-postgres uses defaults with no connect timeout, so a cold DB or a
