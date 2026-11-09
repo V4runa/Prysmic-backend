@@ -9,17 +9,15 @@ import { User } from '../users/user.entity';
 import { HabitFrequency } from '../../enums/habit-frequency.enum';
 
 /**
- * Seeds a curated, on-brand starter workspace for a freshly registered user.
+ * Seeds starter notes, tags, contracts, and tasks for a newly registered user.
  *
- * The goal is twofold: every feature should feel alive on first load (no empty
- * voids), and the sample content itself should gently teach how Prysmic fits
- * together. All records are real and fully editable — the welcome note invites
- * the wanderer to reshape or clear them whenever they're ready.
+ * The samples are real rows. They show how those features fit together, and
+ * the user can edit or delete any of them.
  *
- * This is intentionally best-effort: a seeding failure must never block the
- * signup that triggered it, so the orchestrator swallows and logs errors. It
- * writes through repositories directly to avoid coupling AuthModule to the
- * feature modules (which would form a circular dependency).
+ * Seeding is best-effort: a failure must never block signup, so errors are
+ * logged and swallowed. Writes go through repositories directly to avoid
+ * coupling AuthModule to the feature modules (which would form a circular
+ * dependency).
  */
 @Injectable()
 export class OnboardingService {
@@ -99,19 +97,17 @@ export class OnboardingService {
       {
         title: 'A thought worth keeping',
         content:
-          'The mind is for having ideas, not holding them. The moment a ' +
-          'thought feels worth keeping, give it a home here — then let it go ' +
-          'from your head.\n\nTry it now: edit this note, or tag it ' +
-          'differently. Nothing here is precious. It is yours to reshape.',
+          'When an idea feels worth keeping, write it down here so you can ' +
+          'find it later.\n\nTry it now: edit this note, or tag it ' +
+          'differently. These samples are yours to change or delete.',
         tagKeys: ['reflections'],
       },
       {
-        title: 'Ideas are fragile things',
+        title: "An idea I'm still working on",
         content:
-          'Half-formed ideas evaporate if you wait for them to be perfect. ' +
-          'Capture the spark, not the finished flame.\n\nThis note is tagged ' +
-          '"Ideas" — visit the Tag Codex to see how tags let you filter the ' +
-          'noise down to a single thread of thought.',
+          "You don't need a finished thought to start a note. Write the " +
+          'idea down as it is.\n\nThis note is tagged Ideas — open the Tag ' +
+          'Codex to see how tags help you find notes later.',
         tagKeys: ['ideas'],
       },
     ];
@@ -142,30 +138,28 @@ export class OnboardingService {
   private async seedHabits(userId: number): Promise<void> {
     const habits: Partial<Habit>[] = [
       {
-        name: 'Morning stillness',
-        description: 'A few quiet minutes before the day asks anything of me.',
-        intent: 'Begin each day from calm rather than from urgency.',
-        affirmation: 'I meet the morning on my own terms.',
+        name: 'Morning pause',
+        description: 'A few quiet minutes at the start of the day.',
+        intent: 'Start the day before jumping into everything else.',
+        affirmation: 'I can take a few minutes for myself this morning.',
         color: 'cyan',
         icon: 'moon',
         frequency: HabitFrequency.DAILY,
       },
       {
         name: 'Move the body',
-        description: 'Motion of any kind — a walk, a stretch, a full session.',
-        intent: 'Honor the body that carries every thought I have.',
-        affirmation: 'Movement is a gift I give myself, not a debt I owe.',
+        description: 'A walk, a stretch, or a workout — whatever fits the day.',
+        intent: 'Get some movement in each day.',
+        affirmation: 'A little movement is enough.',
         color: 'emerald',
         icon: 'flame',
         frequency: HabitFrequency.DAILY,
       },
       {
         name: 'Read before sleep',
-        description:
-          'Trade the glow of a screen for a few pages of something real.',
-        intent: 'End the day with wonder instead of noise.',
-        affirmation:
-          'I let my last thoughts of the day be chosen, not fed to me.',
+        description: 'Read a few pages before bed instead of scrolling.',
+        intent: 'Wind down with a book at the end of the day.',
+        affirmation: 'I can choose how the day ends.',
         color: 'violet',
         icon: 'book',
         frequency: HabitFrequency.DAILY,
@@ -187,28 +181,30 @@ export class OnboardingService {
   }
 
   private async seedTasks(userId: number): Promise<void> {
-    const tasks: { title: string; description: string; priority: TaskPriority }[] =
-      [
-        {
-          title: 'Make Prysmic yours — edit or delete these samples',
-          description:
-            'This whole starter set is just a demonstration. Change anything, ' +
-            'or clear it all out. The empty space that remains is the point.',
-          priority: TaskPriority.HIGH,
-        },
-        {
-          title: 'Capture one real thought today',
-          description: 'Open Notes and write a single line that is truly yours.',
-          priority: TaskPriority.MEDIUM,
-        },
-        {
-          title: 'Forge your first Contract',
-          description:
-            'Head to Contracts and commit to one small thing, daily. Watch ' +
-            'the streak grow.',
-          priority: TaskPriority.LOW,
-        },
-      ];
+    const tasks: {
+      title: string;
+      description: string;
+      priority: TaskPriority;
+    }[] = [
+      {
+        title: 'Make Prysmic yours — edit or delete these samples',
+        description:
+          'This starter set is just a demonstration. Change anything, or clear it all out.',
+        priority: TaskPriority.HIGH,
+      },
+      {
+        title: 'Capture one real thought today',
+        description: 'Open Notes and write something of your own.',
+        priority: TaskPriority.MEDIUM,
+      },
+      {
+        title: 'Forge your first Contract',
+        description:
+          'Head to Contracts and commit to one small thing, daily. Watch ' +
+          'the streak grow.',
+        priority: TaskPriority.LOW,
+      },
+    ];
 
     for (const def of tasks) {
       try {
@@ -234,20 +230,17 @@ export class OnboardingService {
 const START_HERE_CONTENT = [
   'Welcome, wanderer.',
   '',
-  'Prysmic is an extension to your cognition — a calm place to set down what ' +
-    'your mind would rather not carry alone. Here is the lay of the land:',
+  'Prysmic is a place to keep your notes, moods, and the commitments you ' +
+    "want to follow through on. Here's what's here:",
   '',
-  '\u2022 Notes — capture thoughts the moment they arrive. This very note is one.',
-  '\u2022 Tag Codex — give your notes color and meaning so you can find a single ' +
-    'thread later. The tags on these samples are a starting palette.',
-  '\u2022 Contracts — your habits, framed as quiet promises to yourself. Each ' +
-    'check-in grows a streak.',
-  '\u2022 Tasks — the things that need doing, sorted by what matters most.',
-  '\u2022 Moods — a gentle daily check-in with how you actually feel.',
+  '\u2022 Notes — write down ideas and thoughts, and come back to them later. This note is one of them.',
+  '\u2022 Tag Codex — create your own tags so you can organize notes and find them again. The tags on these samples are a starting set.',
+  '\u2022 Contracts — habits framed as personal commitments, with check-ins and streaks.',
+  '\u2022 Tasks — things you need to do, organized by what matters most.',
+  '\u2022 Moods — check in with how you feel, and see it next to the rest of your day.',
   '',
-  'Everything you see right now is a sample, placed here to show you around. ' +
-    'None of it is precious. Edit it, retag it, or delete it entirely — the ' +
-    'space is yours.',
+  'Everything you see right now is a sample, so you can look around. Edit ' +
+    "it, retag it, or delete it — it's yours.",
   '',
-  'When you are ready, capture your first real thought. We will be here.',
+  "When you're ready, write your first real note.",
 ].join('\n');

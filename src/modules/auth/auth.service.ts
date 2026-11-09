@@ -90,7 +90,7 @@ export class AuthService {
       password: hashedPassword,
     });
 
-    // Greet the new wanderer with a curated, on-brand starter workspace.
+    // Seed starter notes, contracts, and tasks.
     // Best-effort: seeding never blocks issuing the access token.
     await this.onboardingService.seedSampleData(user.id);
 
