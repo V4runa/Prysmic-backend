@@ -2,6 +2,7 @@ import {
   Body,
   ClassSerializerInterceptor,
   Controller,
+  Get,
   HttpCode,
   Post,
   Req,
@@ -21,6 +22,7 @@ import { AccountLifecycleService } from './account-lifecycle.service';
 import { EMAIL_REQUEST_ACCEPTED } from './account.constants';
 import { RateLimitFilter } from './rate-limit.filter';
 import { clientIp } from './client-ip';
+import { passwordPolicy, type PasswordPolicy } from './password-policy';
 
 @Controller('auth')
 @UseFilters(RateLimitFilter)
@@ -30,6 +32,11 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly lifecycle: AccountLifecycleService,
   ) {}
+
+  @Get('password-policy')
+  getPasswordPolicy(): PasswordPolicy {
+    return passwordPolicy();
+  }
 
   @Post('signup')
   async signup(@Body() signupDto: SignupDto) {

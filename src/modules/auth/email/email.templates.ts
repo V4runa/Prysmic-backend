@@ -70,6 +70,31 @@ export function renderPasswordResetEmail(url: string): RenderedEmail {
   return { subject, html, text };
 }
 
+export const ACCOUNT_DELETED_SUBJECT = 'Your Prysmic account has been deleted';
+
+export function renderAccountDeletedEmail(): RenderedEmail {
+  const subject = ACCOUNT_DELETED_SUBJECT;
+  const text = [
+    'Prysmic',
+    '',
+    'Your Prysmic account has been deleted',
+    '',
+    'The journal and everything kept in it are gone. This cannot be undone.',
+    '',
+    'If you did not ask for this, someone who knew the password did. You can open a new journal whenever you are ready.',
+  ].join('\n');
+  const html = layout({
+    preheader: 'Your Prysmic account has been deleted.',
+    heading: 'Your account has been deleted',
+    paragraphs: [
+      'Your Prysmic account has been deleted. The journal and everything kept in it are gone. This cannot be undone.',
+    ],
+    footnote:
+      'If you did not ask for this, someone who knew the password did. You can open a new journal whenever you are ready.',
+  });
+  return { subject, html, text };
+}
+
 function actionLink(appUrl: string, path: string, token: string): string {
   const base = appUrl.replace(/\/$/, '');
   return `${base}${path}?token=${encodeURIComponent(token)}`;
@@ -79,17 +104,20 @@ function layout(input: {
   preheader: string;
   heading: string;
   paragraphs: string[];
-  actionLabel: string;
-  url: string;
   footnote: string;
+  actionLabel?: string;
+  url?: string;
 }): string {
-  const href = escapeHtml(input.url);
   const paragraphs = input.paragraphs
     .map(
       (paragraph) =>
         `<p style="margin:0 0 16px;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:16px;line-height:1.6;color:#e4dccc;">${escapeHtml(paragraph)}</p>`,
     )
     .join('');
+  const action =
+    input.url && input.actionLabel
+      ? actionRows(input.url, input.actionLabel)
+      : '';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -114,17 +142,7 @@ function layout(input: {
           <tr>
             <td style="padding-top:18px;">${paragraphs}</td>
           </tr>
-          <tr>
-            <td style="padding-top:12px;">
-              <a href="${href}" style="display:inline-block;padding:12px 22px;background:#2a2622;color:#f4efe6;text-decoration:none;border:1px solid #6e6352;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:15px;">${escapeHtml(input.actionLabel)}</a>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding-top:28px;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:13px;line-height:1.6;color:#9c9284;">
-              If the button is shy, copy this link into your browser:<br>
-              <a href="${href}" style="color:#cfc3ae;word-break:break-all;">${href}</a>
-            </td>
-          </tr>
+          ${action}
           <tr>
             <td style="padding-top:32px;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:13px;line-height:1.6;color:#7f7668;">${escapeHtml(input.footnote)}</td>
           </tr>
@@ -134,6 +152,21 @@ function layout(input: {
   </table>
 </body>
 </html>`;
+}
+
+function actionRows(url: string, actionLabel: string): string {
+  const href = escapeHtml(url);
+  return `<tr>
+            <td style="padding-top:12px;">
+              <a href="${href}" style="display:inline-block;padding:12px 22px;background:#2a2622;color:#f4efe6;text-decoration:none;border:1px solid #6e6352;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:15px;">${escapeHtml(actionLabel)}</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top:28px;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:13px;line-height:1.6;color:#9c9284;">
+              If the button is shy, copy this link into your browser:<br>
+              <a href="${href}" style="color:#cfc3ae;word-break:break-all;">${href}</a>
+            </td>
+          </tr>`;
 }
 
 function escapeHtml(value: string): string {

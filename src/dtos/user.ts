@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   MinLength,
 } from 'class-validator';
 
@@ -25,6 +26,14 @@ export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
   username: string;
+}
+
+/** Body for DELETE /users/me. The current password, not a new one. */
+export class DeleteAccountDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1024)
+  password: string;
 }
 
 export class UpdateUserDto {

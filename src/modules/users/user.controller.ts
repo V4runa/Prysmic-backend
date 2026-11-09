@@ -8,21 +8,36 @@ import {
   Req,
   UseGuards,
   UseInterceptors,
+  UseFilters,
   NotFoundException,
   ParseIntPipe,
   ClassSerializerInterceptor,
+  HttpCode,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { UpdateUserDto } from '../../dtos/user';
+import { DeleteAccountDto, UpdateUserDto } from '../../dtos/user';
 import { UserService, toPublicUser, PublicUser } from './user.service';
+import { AccountLifecycleService } from '../auth/account-lifecycle.service';
+import { RateLimitFilter } from '../auth/rate-limit.filter';
+import { clientIp } from '../auth/client-ip';
 
-type AuthenticatedRequest = { user: { userId: number } };
+type AuthenticatedRequest = {
+  user: { userId: number };
+  ip?: string;
+  headers?: Record<string, string | string[] | undefined>;
+};
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 @UseInterceptors(ClassSerializerInterceptor)
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    @Inject(forwardRef(() => AccountLifecycleService))
+    private readonly lifecycle: AccountLifecycleService,
+  ) {}
 
   // The collection is the caller only. It never lists other accounts.
   @Get()
@@ -76,13 +91,18 @@ export class UserController {
     return toPublicUser(saved);
   }
 
-  @Delete(':id')
-  async remove(
+  @Delete('me')
+  @HttpCode(204)
+  @UseFilters(RateLimitFilter)
+  async deleteMe(
     @Req() req: AuthenticatedRequest,
-    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DeleteAccountDto,
   ): Promise<void> {
-    this.assertSelf(req.user.userId, id);
-    await this.userService.remove(Number(req.user.userId));
+    await this.lifecycle.deleteAccount(
+      Number(req.user.userId),
+      dto.password,
+      clientIp(req),
+    );
   }
 
   // Another id and a missing id share one response so callers cannot tell them apart.

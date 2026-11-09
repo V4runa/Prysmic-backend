@@ -232,7 +232,6 @@ describe('User ownership and password serialization', () => {
       ['get', '/users'],
       ['get', `/users/${idA}`],
       ['put', `/users/${idA}`],
-      ['delete', `/users/${idA}`],
     ] as const) {
       const response = await request(server())[method](url);
       expect(response.status).toBe(401);
@@ -378,15 +377,22 @@ describe('User ownership and password serialization', () => {
     expect(JSON.stringify(clash.body)).not.toContain(PASS_A);
   });
 
-  it('does not let one user delete another, and does not expose account creation', async () => {
-    const missing = await request(server())
-      .delete('/users/999998')
+  it('no longer exposes DELETE /users/:id, and does not expose account creation', async () => {
+    const own = await request(server())
+      .delete(`/users/${idA}`)
       .set(auth(tokenA));
     const foreign = await request(server())
       .delete(`/users/${idB}`)
       .set(auth(tokenA));
+    const missing = await request(server())
+      .delete('/users/999998')
+      .set(auth(tokenA));
+    const anonymous = await request(server()).delete(`/users/${idA}`);
+    expect(own.status).toBe(404);
     expect(foreign.status).toBe(404);
-    expect(foreign.body).toEqual(missing.body);
+    expect(missing.status).toBe(404);
+    expect(anonymous.status).toBe(404);
+    expect(users.some((user) => user.id === idA)).toBe(true);
     expect(users.some((user) => user.id === idB)).toBe(true);
 
     const selfB = await request(server())

@@ -34,6 +34,26 @@ export class EmailDelivery {
     }
   }
 
+  /** True when a provider can accept mail. A notice does not need APP_URL. */
+  canSend(): boolean {
+    return this.provider.isConfigured();
+  }
+
+  /**
+   * Sends when a provider is configured and does nothing when it is not.
+   * Use this for mail that has no link. A failed send still throws.
+   */
+  async sendIfConfigured(message: OutboundEmail): Promise<void> {
+    if (!this.canSend()) return;
+    try {
+      await this.provider.send(message);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown error';
+      this.logger.error(`Email send failed: ${detail}`);
+      throw new ServiceUnavailableException(EMAIL_UNAVAILABLE);
+    }
+  }
+
   appUrl(): string {
     const configured = this.config.get<string>('APP_URL')?.trim();
     if (configured) return normalizeAppUrl(configured);

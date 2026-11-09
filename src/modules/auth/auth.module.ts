@@ -47,6 +47,12 @@ import {
       useFactory: createEmailProvider,
     },
   ],
-  exports: [AuthService, AuthTokenService, AuthRateLimiter, EMAIL_PROVIDER],
+  exports: [
+    AuthService,
+    AuthTokenService,
+    AuthRateLimiter,
+    AccountLifecycleService,
+    EMAIL_PROVIDER,
+  ],
 })
 export class AuthModule {}

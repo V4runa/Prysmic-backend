@@ -1,16 +1,25 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
+import { purgeAccount } from '../users/purge-account';
 import {
   AUTH_TOKEN_PURPOSE,
   EMAIL_UNAVAILABLE,
+  INVALID_CREDENTIALS,
   INVALID_LINK,
   RESET_TTL_MS,
   VERIFICATION_TTL_MS,
 } from './account.constants';
 import { EmailDelivery } from './email/email.delivery';
 import {
+  renderAccountDeletedEmail,
   renderPasswordResetEmail,
   renderVerificationEmail,
   resetLink,
@@ -18,6 +27,7 @@ import {
 } from './email/email.templates';
 import { AuthRateLimiter, type RateLimitBucket } from './rate-limit';
 import { hashPassword } from './password';
+import { assertPasswordAllowed } from './password-policy';
 import { AuthTokenService } from './tokens/auth-token.service';
 
 @Injectable()
@@ -95,25 +105,84 @@ export class AccountLifecycleService {
 
   async resetPassword(rawToken: string, password: string): Promise<void> {
     const token = requiredToken(rawToken);
+    const userId = await this.tokens.peekUserId(
+      token,
+      AUTH_TOKEN_PURPOSE.passwordReset,
+    );
+    if (!userId) throw new BadRequestException(INVALID_LINK);
+    const user = await this.users.findById(userId);
+    if (!user) throw new BadRequestException(INVALID_LINK);
+    // Reject before hashing or consuming the link, so the person can try again.
+    assertPasswordAllowed(password, {
+      email: user.email,
+      username: user.username,
+    });
     const passwordHash = await hashPassword(password);
     await this.runLink(async (manager) => {
-      const userId = await this.tokens.consume(
+      const consumedId = await this.tokens.consume(
         manager,
         token,
         AUTH_TOKEN_PURPOSE.passwordReset,
       );
-      if (!userId) throw new BadRequestException(INVALID_LINK);
+      if (!consumedId) throw new BadRequestException(INVALID_LINK);
       const updated = await this.users.replacePasswordHash(
         manager,
-        userId,
+        consumedId,
         passwordHash,
       );
       if (!updated) throw new BadRequestException(INVALID_LINK);
       await this.tokens.revokeUnused(
         manager,
-        userId,
+        consumedId,
         AUTH_TOKEN_PURPOSE.passwordReset,
       );
+    });
+  }
+
+  /**
+   * Confirms the current password, then deletes the account and everything
+   * it owns. The confirmation letter goes out after the commit, and only
+   * when the address was verified. A missing mail config or a delivery
+   * failure does not change the outcome of the delete.
+   */
+  async deleteAccount(
+    userId: number,
+    password: string,
+    ip: string,
+  ): Promise<void> {
+    const id = Number(userId);
+    if (!Number.isInteger(id)) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+    const user = await this.users.findById(id);
+    if (!user) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    this.rateLimiter.assert(
+      'account_delete',
+      user.email.trim().toLowerCase(),
+      ip,
+    );
+    const passwordMatches = await bcrypt.compare(password, user.password);
+    if (!passwordMatches) throw new UnauthorizedException(INVALID_CREDENTIALS);
+
+    const email = user.email;
+    const verified = user.emailVerified === true;
+    const removed = await this.dataSource.transaction((manager) =>
+      purgeAccount(manager, user.id),
+    );
+    if (!removed) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (verified) this.sendAccountDeletedEmail(email);
+  }
+
+  sendAccountDeletedEmail(to: string): void {
+    if (!this.email.canSend()) {
+      this.logger.error(
+        `Account deletion email was not sent: ${EMAIL_UNAVAILABLE}`,
+      );
+      return;
+    }
+    this.dispatch(async () => {
+      const rendered = renderAccountDeletedEmail();
+      await this.email.sendIfConfigured({ to, ...rendered });
     });
   }
 
