@@ -77,7 +77,9 @@ export function readPositiveInt(
 export type RateLimitBucket =
   | 'password_reset'
   | 'email_resend'
-  | 'account_delete';
+  | 'account_delete'
+  | 'password_change'
+  | 'email_change';
 
 @Injectable()
 export class AuthRateLimiter {

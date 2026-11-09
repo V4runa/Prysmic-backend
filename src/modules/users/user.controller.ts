@@ -81,14 +81,20 @@ export class UserController {
   }
 
   @Put(':id')
+  @UseFilters(RateLimitFilter)
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateUserDto,
   ): Promise<PublicUser> {
     this.assertSelf(req.user.userId, id);
-    const saved = await this.userService.update(Number(req.user.userId), dto);
-    return toPublicUser(saved);
+    const { user, emailChanged } = await this.userService.update(
+      Number(req.user.userId),
+      dto,
+      clientIp(req),
+    );
+    if (emailChanged) this.lifecycle.sendVerificationEmail(user);
+    return toPublicUser(user);
   }
 
   @Delete('me')

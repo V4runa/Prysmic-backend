@@ -46,8 +46,8 @@ const COMMON_PASSWORDS = loadCommonPasswords();
 
 /**
  * Rules for a password that is about to be stored. Call this from signup,
- * password reset, and any future change-password path. Login must not call
- * it: a password chosen earlier has to keep working.
+ * password reset, and signed-in password change. Login must not call it:
+ * a password chosen earlier has to keep working.
  */
 export function assertPasswordAllowed(
   password: string,

@@ -14,7 +14,14 @@ import * as bcrypt from 'bcrypt';
 import request, { type Response } from 'supertest';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { AppModule } from '../../app.module';
-import { EMAIL_REQUEST_ACCEPTED, INVALID_LINK } from './account.constants';
+import {
+  EMAIL_CHANGE_PASSWORD_REQUIRED,
+  EMAIL_REQUEST_ACCEPTED,
+  INVALID_CREDENTIALS,
+  INVALID_LINK,
+  PASSWORD_UNCHANGED,
+} from './account.constants';
+import { PASSWORD_CHANGED_SUBJECT } from './email/email.templates';
 import { ConsoleEmailProvider } from './email/console-email.provider';
 import { EMAIL_PROVIDER } from './email/email.provider.factory';
 import type { EmailProvider, OutboundEmail } from './email/email.types';
@@ -684,10 +691,33 @@ describe('account lifecycle against disposable Postgres', () => {
     const profile = await request(server())
       .get('/users')
       .set(auth(signup.body.access_token as string));
+    const token = signup.body.access_token as string;
+    const missingPassword = await request(server())
+      .put(`/users/${profile.body[0].id}`)
+      .set(auth(token))
+      .send({ email: 'moved@example.test' });
+    expect(missingPassword.status).toBe(400);
+    expect(missingPassword.body.message).toBe(EMAIL_CHANGE_PASSWORD_REQUIRED);
+    const wrongPassword = await request(server())
+      .put(`/users/${profile.body[0].id}`)
+      .set(auth(token))
+      .send({
+        email: 'moved@example.test',
+        currentPassword: 'not-the-passphrase',
+      });
+    expect(wrongPassword.status).toBe(401);
+    expect(wrongPassword.body.message).toBe(INVALID_CREDENTIALS);
+    const unchanged = await request(server()).get('/users').set(auth(token));
+    expect(unchanged.body[0].email).toBe('moving@example.test');
+
+    await clearMail();
     const moved = await request(server())
       .put(`/users/${profile.body[0].id}`)
-      .set(auth(signup.body.access_token as string))
-      .send({ email: 'moved@example.test' });
+      .set(auth(token))
+      .send({
+        email: 'moved@example.test',
+        currentPassword: 'moving-passphrase',
+      });
     expect(moved.status).toBe(200);
     expect(moved.body.email).toBe('moved@example.test');
     expect(moved.body.emailVerified).toBe(false);
@@ -697,16 +727,190 @@ describe('account lifecycle against disposable Postgres', () => {
       .post('/auth/email/verify')
       .send({ token: unusedToken });
     expect(staleLink.status).toBe(400);
-    const still = await request(server())
-      .get('/users')
-      .set(auth(signup.body.access_token as string));
+    const still = await request(server()).get('/users').set(auth(token));
+    expect(still.body[0].email).toBe('moved@example.test');
     expect(still.body[0].emailVerified).toBe(false);
+    const letter = await onlyEmail();
+    expect(letter.to).toBe('moved@example.test');
+    expect(letter.subject).toBe('Confirm your Prysmic email');
+    const freshLink = await request(server())
+      .post('/auth/email/verify')
+      .send({ token: tokenFrom(letter) });
+    expect(freshLink.status).toBe(200);
 
     const kept = await admin.query(
       `SELECT "content" FROM "notes" WHERE "content" = $1`,
       [KEPT_NOTE],
     );
     expect(kept).toHaveLength(1);
+  });
+
+  it('changes the signed-in password, signs out other sessions, and sends a notice', async () => {
+    const signup = await request(server()).post('/auth/signup').send({
+      username: 'changing-wanderer',
+      email: 'changing@example.test',
+      password: 'original-passphrase',
+    });
+    const link = tokenFrom(await onlyEmail());
+    const confirmed = await request(server())
+      .post('/auth/email/verify')
+      .send({ token: link });
+    expect(confirmed.status).toBe(200);
+    await clearMail();
+
+    const first = signup.body.access_token as string;
+    const second = await request(server()).post('/auth/login').send({
+      identifier: 'changing@example.test',
+      password: 'original-passphrase',
+    });
+    expect(second.status).toBe(201);
+    const profile = await request(server()).get('/users').set(auth(first));
+    const userId = profile.body[0].id as number;
+
+    const changed = await request(server())
+      .post('/auth/password/change')
+      .set(auth(first))
+      .send({
+        currentPassword: 'original-passphrase',
+        newPassword: 'replacement-passphrase',
+      });
+    expect(changed.status).toBe(200);
+    expect(Object.keys(changed.body).sort()).toEqual([
+      'access_token',
+      'emailVerified',
+    ]);
+    expect(changed.body.emailVerified).toBe(true);
+    expect(typeof changed.body.access_token).toBe('string');
+    expect(changed.body.access_token).not.toBe(first);
+    expect(JSON.stringify(changed.body)).not.toContain(
+      'replacement-passphrase',
+    );
+    expect(JSON.stringify(changed.body)).not.toContain('original-passphrase');
+
+    const staleFirst = await request(server()).get('/users').set(auth(first));
+    const staleSecond = await request(server())
+      .get('/users')
+      .set(auth(second.body.access_token as string));
+    expect(staleFirst.status).toBe(401);
+    expect(staleSecond.status).toBe(401);
+
+    const keptSession = await request(server())
+      .get('/users')
+      .set(auth(changed.body.access_token as string));
+    expect(keptSession.status).toBe(200);
+    expect(keptSession.body[0].email).toBe('changing@example.test');
+    expect(keptSession.body[0].emailVerified).toBe(true);
+
+    const oldLogin = await request(server()).post('/auth/login').send({
+      identifier: 'changing@example.test',
+      password: 'original-passphrase',
+    });
+    const newLogin = await request(server()).post('/auth/login').send({
+      identifier: 'changing@example.test',
+      password: 'replacement-passphrase',
+    });
+    expect(oldLogin.status).toBe(401);
+    expect(newLogin.status).toBe(201);
+    expect(newLogin.body.emailVerified).toBe(true);
+
+    const version = await admin.query(
+      `SELECT "sessionVersion", "password", "emailVerified" FROM "users" WHERE "id" = $1`,
+      [userId],
+    );
+    expect(Number(version[0].sessionVersion)).toBe(1);
+    expect(version[0].emailVerified).toBe(true);
+    expect(version[0].password).not.toBe('replacement-passphrase');
+    expect(
+      await bcrypt.compare('replacement-passphrase', version[0].password),
+    ).toBe(true);
+    expect(JSON.stringify(keptSession.body)).not.toContain(version[0].password);
+
+    const letter = await onlyEmail();
+    expect(letter.to).toBe('changing@example.test');
+    expect(letter.subject).toBe(PASSWORD_CHANGED_SUBJECT);
+    expect(letter.text).toContain('Your password was changed');
+    expect(letter.text).not.toContain('replacement-passphrase');
+    expect(letter.text).not.toContain('original-passphrase');
+    expect(letter.text).not.toContain('token=');
+    expect(letter.html).not.toContain('href=');
+  });
+
+  it('rejects a signed-in password change that is wrong, reused, or against policy', async () => {
+    const signup = await request(server()).post('/auth/signup').send({
+      username: 'steady-wanderer',
+      email: 'steady@example.test',
+      password: 'steady-passphrase',
+    });
+    await clearMail();
+    const token = signup.body.access_token as string;
+    const profile = await request(server()).get('/users').set(auth(token));
+    const userId = profile.body[0].id as number;
+    const before = await admin.query(
+      `SELECT "password", "sessionVersion" FROM "users" WHERE "id" = $1`,
+      [userId],
+    );
+
+    const wrong = await request(server())
+      .post('/auth/password/change')
+      .set(auth(token))
+      .send({
+        currentPassword: 'not-the-passphrase',
+        newPassword: 'another-passphrase',
+      });
+    const loginWrong = await request(server()).post('/auth/login').send({
+      identifier: 'nobody-steady@example.test',
+      password: 'not-the-passphrase',
+    });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body).toEqual(loginWrong.body);
+    expect(wrong.body.message).toBe(INVALID_CREDENTIALS);
+
+    const same = await request(server())
+      .post('/auth/password/change')
+      .set(auth(token))
+      .send({
+        currentPassword: 'steady-passphrase',
+        newPassword: 'steady-passphrase',
+      });
+    expect(same.status).toBe(400);
+    expect(same.body.message).toBe(PASSWORD_UNCHANGED);
+
+    app.get(AuthRateLimiter).clear();
+    const common = await request(server())
+      .post('/auth/password/change')
+      .set(auth(token))
+      .send({
+        currentPassword: 'steady-passphrase',
+        newPassword: 'password',
+      });
+    expect(common.status).toBe(400);
+    expect(common.body.message).toBe(
+      'That password is too common. Choose a different one.',
+    );
+    const personal = await request(server())
+      .post('/auth/password/change')
+      .set(auth(token))
+      .send({
+        currentPassword: 'steady-passphrase',
+        newPassword: 'steady@example.test',
+      });
+    expect(personal.status).toBe(400);
+    expect(personal.body.message).toBe(
+      'Password cannot be your email address.',
+    );
+
+    const after = await admin.query(
+      `SELECT "password", "sessionVersion", "emailVerified" FROM "users" WHERE "id" = $1`,
+      [userId],
+    );
+    expect(after[0].password).toBe(before[0].password);
+    expect(Number(after[0].sessionVersion)).toBe(0);
+    expect(after[0].emailVerified).toBe(false);
+    const still = await request(server()).get('/users').set(auth(token));
+    expect(still.status).toBe(200);
+    await settle();
+    expect(mailbox().outbox).toHaveLength(0);
+    expect(JSON.stringify(same.body)).not.toContain('steady-passphrase');
   });
 });
 

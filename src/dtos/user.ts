@@ -47,4 +47,14 @@ export class UpdateUserDto {
   @IsEmail()
   @IsNotEmpty()
   email?: string;
+
+  /**
+   * Required only when `email` is a different address. A username-only
+   * change omits it. Checked against the stored hash, never stored itself.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1024)
+  currentPassword?: string;
 }

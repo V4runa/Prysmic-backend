@@ -14,12 +14,14 @@ import {
   EMAIL_UNAVAILABLE,
   INVALID_CREDENTIALS,
   INVALID_LINK,
+  PASSWORD_UNCHANGED,
   RESET_TTL_MS,
   VERIFICATION_TTL_MS,
 } from './account.constants';
 import { EmailDelivery } from './email/email.delivery';
 import {
   renderAccountDeletedEmail,
+  renderPasswordChangedEmail,
   renderPasswordResetEmail,
   renderVerificationEmail,
   resetLink,
@@ -140,6 +142,61 @@ export class AccountLifecycleService {
   }
 
   /**
+   * Signed-in password replacement. A wrong current password reads the same
+   * as a failed login. The new password follows the shared policy and must
+   * not be the one already stored. The returned session uses the bumped
+   * version so the caller can keep this session and every older token dies.
+   * Does not mark the email verified: knowing the password is not proof of
+   * the mailbox, unlike a reset link.
+   */
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+    ip: string,
+  ): Promise<{
+    id: number;
+    username: string;
+    email: string;
+    emailVerified: boolean;
+    sessionVersion: number;
+  }> {
+    const id = Number(userId);
+    if (!Number.isInteger(id)) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+    const user = await this.users.findById(id);
+    if (!user) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    this.rateLimiter.assert(
+      'password_change',
+      user.email.trim().toLowerCase(),
+      ip,
+    );
+    const passwordMatches = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
+    if (!passwordMatches) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (
+      newPassword === currentPassword ||
+      (await bcrypt.compare(newPassword, user.password))
+    ) {
+      // bcrypt keeps only the first 72 bytes, so a legacy password and its
+      // own prefix still match. That prefix is not a new password.
+      throw new BadRequestException(PASSWORD_UNCHANGED);
+    }
+    assertPasswordAllowed(newPassword, {
+      email: user.email,
+      username: user.username,
+    });
+    const passwordHash = await hashPassword(newPassword);
+    const updated = await this.users.changePasswordHash(user.id, passwordHash);
+    if (!updated) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (updated.emailVerified) this.sendPasswordChangedEmail(updated.email);
+    return updated;
+  }
+
+  /**
    * Confirms the current password, then deletes the account and everything
    * it owns. The confirmation letter goes out after the commit, and only
    * when the address was verified. A missing mail config or a delivery
@@ -171,6 +228,19 @@ export class AccountLifecycleService {
     );
     if (!removed) throw new UnauthorizedException(INVALID_CREDENTIALS);
     if (verified) this.sendAccountDeletedEmail(email);
+  }
+
+  sendPasswordChangedEmail(to: string): void {
+    if (!this.email.canSend()) {
+      this.logger.error(
+        `Password change email was not sent: ${EMAIL_UNAVAILABLE}`,
+      );
+      return;
+    }
+    this.dispatch(async () => {
+      const rendered = renderPasswordChangedEmail();
+      await this.email.sendIfConfigured({ to, ...rendered });
+    });
   }
 
   sendAccountDeletedEmail(to: string): void {

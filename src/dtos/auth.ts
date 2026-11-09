@@ -69,3 +69,19 @@ export class ResetPasswordDto {
   @IsNotEmpty()
   password: string;
 }
+
+export class ChangePasswordDto {
+  // The password that already signs this account in. A legacy password may
+  // be shorter than the current policy, so that policy is not applied here.
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1024)
+  currentPassword: string;
+
+  // Length, the bcrypt byte cap, and the common-password list are enforced
+  // by assertPasswordAllowed once the account is known.
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1024)
+  newPassword: string;
+}
