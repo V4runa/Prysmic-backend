@@ -8,6 +8,7 @@ import request from 'supertest';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { Tag } from '../tags/tags.entity';
 import { TagsService } from '../tags/tags.service';
+import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
 import { NoteAttachment } from './note-attachment.entity';
@@ -467,6 +468,10 @@ describe('Note ownership (controller + service)', () => {
         { provide: getRepositoryToken(Note), useValue: memory.noteRepo },
         { provide: getRepositoryToken(Tag), useValue: memory.tagRepo },
         { provide: getRepositoryToken(User), useValue: memory.userRepo },
+        {
+          provide: getRepositoryToken(AuthToken),
+          useValue: { manager: {} },
+        },
         {
           provide: getRepositoryToken(NoteAttachment),
           useValue: memory.attachmentRepo,

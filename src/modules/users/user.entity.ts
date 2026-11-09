@@ -22,6 +22,18 @@ export class User {
   @Exclude()
   password: string;
 
+  /** False until the address is confirmed. Existing rows are grandfathered true. */
+  @Column({ default: false })
+  emailVerified: boolean;
+
+  /**
+   * Incremented when the password changes. Access tokens carry the same
+   * number and stop matching afterwards. Hidden from API responses.
+   */
+  @Column({ default: 0 })
+  @Exclude()
+  sessionVersion: number;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 

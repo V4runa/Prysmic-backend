@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
@@ -6,7 +7,12 @@ import {
   MinLength,
 } from 'class-validator';
 
+function normalizeEmail(value: unknown): unknown {
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
 export class CreateUserDto {
+  @Transform(({ value }) => normalizeEmail(value))
   @IsEmail()
   @IsNotEmpty()
   email: string;
@@ -28,6 +34,7 @@ export class UpdateUserDto {
   username?: string;
 
   @IsOptional()
+  @Transform(({ value }) => normalizeEmail(value))
   @IsEmail()
   @IsNotEmpty()
   email?: string;

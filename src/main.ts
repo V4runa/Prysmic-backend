@@ -9,6 +9,12 @@ dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: false });
+  // Railway terminates TLS one hop in front of the app. Trust that hop so
+  // password-reset rate limits see the client address, not the proxy.
+  const http = app.getHttpAdapter().getInstance() as {
+    set: (setting: string, value: number) => void;
+  };
+  http.set('trust proxy', 1);
   const configService = app.get(ConfigService);
   const port = Number(configService.get<number>('PORT')) || 3001;
 
@@ -16,9 +22,9 @@ async function bootstrap() {
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,            
-      forbidNonWhitelisted: true, 
-      transform: true,        
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
@@ -37,6 +43,8 @@ async function bootstrap() {
   });
 
   await app.listen(port, '0.0.0.0');
-  console.log(`🚀 Server running on port ${port} (allowed origins: ${allowedOrigins.join(', ') || 'none'})`);
+  console.log(
+    `🚀 Server running on port ${port} (allowed origins: ${allowedOrigins.join(', ') || 'none'})`,
+  );
 }
 bootstrap();

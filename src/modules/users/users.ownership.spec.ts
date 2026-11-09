@@ -10,6 +10,8 @@ import { AuthController } from '../auth/auth.controller';
 import { AuthService } from '../auth/auth.service';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { OnboardingService } from '../onboarding/onboarding.service';
+import { AccountLifecycleService } from '../auth/account-lifecycle.service';
+import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { User } from './user.entity';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
@@ -18,7 +20,6 @@ import { UserService } from './user.service';
    The assertions are the ownership and serialization contract. */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/require-await */
@@ -146,7 +147,15 @@ describe('User ownership and password serialization', () => {
           provide: OnboardingService,
           useValue: { seedSampleData: () => Promise.resolve() },
         },
+        {
+          provide: AccountLifecycleService,
+          useValue: { sendVerificationEmail: () => Promise.resolve() },
+        },
         { provide: getRepositoryToken(User), useValue: memory.repo },
+        {
+          provide: getRepositoryToken(AuthToken),
+          useValue: { manager: {} },
+        },
       ],
     }).compile();
 
