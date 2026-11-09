@@ -54,3 +54,9 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Database dumps. Schema migrations under src/migrations stay tracked.
+full-backup.sql
+full-backup-clean.sql
+*backup*.sql
+*.dump
