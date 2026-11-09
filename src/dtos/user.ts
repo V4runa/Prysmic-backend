@@ -27,6 +27,13 @@ export class CreateUserDto {
   username: string;
 }
 
+/** Body for DELETE /users/me. The current password, not a new one. */
+export class DeleteAccountDto {
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+
 export class UpdateUserDto {
   @IsOptional()
   @IsString()

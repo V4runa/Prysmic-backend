@@ -20,6 +20,9 @@ export const EMAIL_UNAVAILABLE =
 
 export const INVALID_LINK = 'This link is invalid or has expired.';
 
+/** Shared by login and account deletion so a wrong password reads the same. */
+export const INVALID_CREDENTIALS = 'Invalid credentials';
+
 export const RATE_LIMIT_MESSAGE =
   'Too many requests. Wait a little, then try again.';
 

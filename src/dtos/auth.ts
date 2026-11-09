@@ -22,9 +22,10 @@ export class SignupDto {
   @IsNotEmpty()
   username: string;
 
+  // Length, the bcrypt byte cap, and the common-password list are enforced
+  // by assertPasswordAllowed in AuthService, together with reset.
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
   password: string;
 }
 
@@ -34,6 +35,8 @@ export class LoginDto {
   @IsNotEmpty()
   identifier: string;
 
+  // The previous minimum. Passwords chosen before the stronger rules must
+  // still sign in. Signup and reset do not use this bound.
   @IsString()
   @IsNotEmpty()
   @MinLength(6)
@@ -60,8 +63,9 @@ export class ResetPasswordDto {
   @MaxLength(512)
   token: string;
 
+  // Same shared policy as signup, applied in AccountLifecycleService once
+  // the account behind the token is known.
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
   password: string;
 }

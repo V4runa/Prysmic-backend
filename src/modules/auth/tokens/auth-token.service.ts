@@ -87,6 +87,36 @@ export class AuthTokenService {
     return updated[0]?.userId ?? null;
   }
 
+  /**
+   * User id for a token that is still unused and unexpired.
+   * Does not mark the token used, so a rejected new password can be retried.
+   */
+  async peekUserId(
+    rawToken: string,
+    purpose: AuthTokenPurpose,
+  ): Promise<number | null> {
+    const computed = hashToken(rawToken);
+    const rows = rowsFromQuery<{
+      userId: number;
+      tokenHash: string;
+      usable: boolean | string | null;
+    }>(
+      await this.tokens.manager.query(
+        `SELECT "userId", "tokenHash",
+                ("usedAt" IS NULL AND "expiresAt" > NOW()) AS "usable"
+         FROM "auth_tokens"
+         WHERE "tokenHash" = $1 AND "purpose" = $2
+         LIMIT 1`,
+        [computed, purpose],
+      ),
+    );
+    const row = rows[0];
+    const stored = row?.tokenHash ?? DUMMY_HASH;
+    if (!tokenHashesEqual(stored, computed) || !row) return null;
+    if (row.usable !== true) return null;
+    return row.userId;
+  }
+
   async revokeUnused(
     manager: EntityManager,
     userId: number,

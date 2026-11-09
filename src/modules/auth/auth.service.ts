@@ -10,7 +10,9 @@ import { SignupDto, LoginDto } from 'src/dtos/auth';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { User } from '../users/user.entity';
 import { AccountLifecycleService } from './account-lifecycle.service';
+import { INVALID_CREDENTIALS } from './account.constants';
 import { hashPassword } from './password';
+import { assertPasswordAllowed } from './password-policy';
 
 interface SessionUser {
   id: number;
@@ -47,7 +49,7 @@ export class AuthService {
       candidates.push(byEmail);
     }
     if (candidates.length === 0) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
     const matched: User[] = [];
@@ -57,7 +59,7 @@ export class AuthService {
       }
     }
     if (matched.length !== 1) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
     return sessionUser(matched[0]);
   }
@@ -65,6 +67,7 @@ export class AuthService {
   async signup(signupDto: SignupDto) {
     const email = signupDto.email.trim().toLowerCase();
     const { username, password } = signupDto;
+    assertPasswordAllowed(password, { email, username });
     const existingUsername = await this.userService.findByUsername(username);
     if (existingUsername) {
       throw new ConflictException('Username already taken!');
@@ -99,6 +102,8 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
+    // Do not run the signup password policy here. A password that was
+    // accepted when the account was created has to keep opening it.
     const user = await this.validateUser(
       loginDto.identifier,
       loginDto.password,
