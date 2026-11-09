@@ -1,3 +1,7 @@
+// Sentry instruments modules as they load. Importing this first keeps the
+// SDK disabled unless SENTRY_DSN is set.
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
@@ -47,4 +51,4 @@ async function bootstrap() {
     `🚀 Server running on port ${port} (allowed origins: ${allowedOrigins.join(', ') || 'none'})`,
   );
 }
-bootstrap();
+void bootstrap();
