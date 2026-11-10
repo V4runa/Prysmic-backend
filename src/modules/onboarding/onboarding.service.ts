@@ -12,7 +12,10 @@ import { HabitFrequency } from '../../enums/habit-frequency.enum';
  * Seeds starter notes, tags, contracts, and tasks for a newly registered user.
  *
  * The samples are real rows. They show how those features fit together, and
- * the user can edit or delete any of them.
+ * the user can edit or delete any of them. Every starter tag is attached to
+ * a sample. Gratitude is on the note about a good moment. Someday is on the
+ * unfinished idea and on the later contract task, so one tag is shared by a
+ * note and a task.
  *
  * Seeding is best-effort: a failure must never block signup, so errors are
  * logged and swallowed. Writes go through repositories directly to avoid
@@ -35,7 +38,7 @@ export class OnboardingService {
       const tags = await this.seedTags(userId);
       await this.seedNotes(userId, tags);
       await this.seedHabits(userId);
-      await this.seedTasks(userId);
+      await this.seedTasks(userId, tags);
     } catch (err) {
       // Never let onboarding seeding break the signup flow.
       this.logger.error(
@@ -97,10 +100,10 @@ export class OnboardingService {
       {
         title: 'A thought worth keeping',
         content:
-          'When an idea feels worth keeping, write it down here so you can ' +
+          'When a good moment feels worth keeping, write it down here so you can ' +
           'find it later.\n\nTry it now: edit this note, or tag it ' +
           'differently. These samples are yours to change or delete.',
-        tagKeys: ['reflections'],
+        tagKeys: ['reflections', 'gratitude'],
       },
       {
         title: "An idea I'm still working on",
@@ -108,7 +111,7 @@ export class OnboardingService {
           "You don't need a finished thought to start a note. Write the " +
           'idea down as it is.\n\nThis note is tagged Ideas — open the Tag ' +
           'Codex to see how tags help you find notes later.',
-        tagKeys: ['ideas'],
+        tagKeys: ['ideas', 'someday'],
       },
     ];
 
@@ -180,22 +183,28 @@ export class OnboardingService {
     }
   }
 
-  private async seedTasks(userId: number): Promise<void> {
+  private async seedTasks(
+    userId: number,
+    tags: Record<string, Tag>,
+  ): Promise<void> {
     const tasks: {
       title: string;
       description: string;
       priority: TaskPriority;
+      tagKeys: string[];
     }[] = [
       {
         title: 'Make Prysmic yours — edit or delete these samples',
         description:
           'This starter set is just a demonstration. Change anything, or clear it all out.',
         priority: TaskPriority.HIGH,
+        tagKeys: [],
       },
       {
         title: 'Capture one real thought today',
         description: 'Open Notes and write something of your own.',
         priority: TaskPriority.MEDIUM,
+        tagKeys: [],
       },
       {
         title: 'Forge your first Contract',
@@ -203,6 +212,7 @@ export class OnboardingService {
           'Head to Contracts and commit to one small thing, daily. Watch ' +
           'the streak grow.',
         priority: TaskPriority.LOW,
+        tagKeys: ['someday'],
       },
     ];
 
@@ -214,6 +224,9 @@ export class OnboardingService {
           priority: def.priority,
           userId,
           user: this.userRef(userId),
+          tags: def.tagKeys
+            .map((key) => tags[key])
+            .filter((tag): tag is Tag => Boolean(tag)),
         });
         await this.taskRepo.save(task);
       } catch (err) {
