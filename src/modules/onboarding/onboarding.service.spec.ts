@@ -1,6 +1,11 @@
 import { Repository } from 'typeorm';
 import { HabitFrequency } from '../../enums/habit-frequency.enum';
 import { onboardingSampleRewrites } from '../../migrations/1790700000000-RewriteOnboardingSampleCopy';
+import {
+  gratitudeSampleNote,
+  somedaySampleNote,
+  somedaySampleTask,
+} from '../../migrations/1790800000000-UseOnboardingStarterTags';
 import { Habit } from '../habits/habit.entity';
 import { Note } from '../notes/notes.entity';
 import { Tag } from '../tags/tags.entity';
@@ -127,9 +132,16 @@ describe('OnboardingService sample copy', () => {
       (rewrite) => rewrite.table === 'task',
     );
 
-    expect(notes.rows.map(copyOf)).toEqual(
-      noteRewrites.map((rewrite) => rewrite.to),
-    );
+    expect(notes.rows.map(copyOf)).toEqual([
+      noteRewrites[0].to,
+      { title: gratitudeSampleNote.title, content: gratitudeSampleNote.to },
+      noteRewrites[2].to,
+    ]);
+    expect(gratitudeSampleNote.title).toBe(noteRewrites[1].to.title);
+    expect(gratitudeSampleNote.from).toBe(noteRewrites[1].to.content);
+    expect(notes.rows[1].content).toBe(gratitudeSampleNote.to);
+    expect(notes.rows[2].content).toBe(somedaySampleNote.content);
+    expect(somedaySampleNote.content).toBe(noteRewrites[2].to.content);
     expect(habits.rows.map(copyOf)).toEqual(
       habitRewrites.map((rewrite) => rewrite.to),
     );
@@ -137,9 +149,8 @@ describe('OnboardingService sample copy', () => {
       taskRewrites.map((rewrite) => rewrite.to),
     );
     expect(copyOf(tasks.rows[2])).toEqual({
-      title: 'Forge your first Contract',
-      description:
-        'Head to Contracts and commit to one small thing, daily. Watch the streak grow.',
+      title: somedaySampleTask.title,
+      description: somedaySampleTask.description,
     });
   });
 
@@ -151,9 +162,12 @@ describe('OnboardingService sample copy', () => {
     ]);
     expect(notes.rows.map((note) => note.tags.map((tag) => tag.name))).toEqual([
       ['Reflections'],
-      ['Reflections'],
-      ['Ideas'],
+      ['Reflections', 'Gratitude'],
+      ['Ideas', 'Someday'],
     ]);
+    expect(
+      tasks.rows.map((task) => (task.tags ?? []).map((tag) => tag.name)),
+    ).toEqual([[], [], ['Someday']]);
     expect(
       tags.rows.map((tag) => ({ name: tag.name, color: tag.color })),
     ).toEqual([
@@ -218,6 +232,26 @@ describe('OnboardingService sample copy', () => {
     expect(visible).not.toContain('truly yours');
     expect(visible).not.toContain('End the day with wonder');
     expect(visible).not.toContain('asks anything of me');
+    expect(visible).not.toContain('grateful');
+    expect(visible).not.toContain('thankful');
+  });
+
+  it('attaches every starter tag to at least one note or task', () => {
+    const onNotes = notes.rows.flatMap((note) =>
+      note.tags.map((tag) => tag.name),
+    );
+    const onTasks = tasks.rows.flatMap((task) =>
+      (task.tags ?? []).map((tag) => tag.name),
+    );
+    const used = new Set([...onNotes, ...onTasks]);
+
+    expect(tags.rows.length).toBeGreaterThan(0);
+    for (const tag of tags.rows) {
+      expect(used.has(tag.name)).toBe(true);
+    }
+    expect(onNotes).toContain('Gratitude');
+    expect(onNotes).toContain('Someday');
+    expect(onTasks).toContain('Someday');
   });
 });
 
