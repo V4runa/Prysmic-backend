@@ -31,4 +31,10 @@ export class Tag {
 
   @ManyToOne(() => User, (user) => user.tags, { onDelete: 'CASCADE' })
   user: User;
+
+  /** Set on GET /tags. Not a column. Includes archived notes. */
+  noteCount?: number;
+
+  /** Set on GET /tags. Not a column. Includes archived tasks. */
+  taskCount?: number;
 }
