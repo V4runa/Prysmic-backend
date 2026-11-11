@@ -13,6 +13,8 @@ import {
   BadRequestException,
   NotFoundException,
   ParseIntPipe,
+  ParseBoolPipe,
+  DefaultValuePipe,
   ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { NotesService } from './notes.service';
@@ -63,6 +65,8 @@ export class NotesController {
     @Param('userId', ParseIntPipe) userId: number,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('archived', new DefaultValuePipe(false), ParseBoolPipe)
+    archived?: boolean,
   ) {
     const authUserId = Number(req.user.userId);
     if (!Number.isInteger(authUserId) || authUserId !== userId) {
@@ -72,6 +76,7 @@ export class NotesController {
     return this.notesService.getNotesByUser(authUserId, {
       limit: limit !== undefined ? Number(limit) : undefined,
       offset: offset !== undefined ? Number(offset) : undefined,
+      archived: archived === true,
     });
   }
 
@@ -87,6 +92,9 @@ export class NotesController {
 
   // Update a note. Ownership and the new tag set come from the token subject.
   // userId is not a field on UpdateNoteDto, so a body userId is rejected.
+  // tagIds is applied only when the body includes it: omitted leaves tags
+  // alone, and [] clears them. Title and content are the same — a pin or
+  // archive body must not blank the note.
   @Put(':id')
   @UseGuards(JwtAuthGuard)
   async updateNote(
@@ -95,22 +103,30 @@ export class NotesController {
     @Req() req: AuthenticatedRequest,
   ): Promise<Note> {
     const userId = req.user.userId;
-    const tagIds = dto.tagIds ?? [];
-    const noteTags = await this.tagsService.getTagsByIds(tagIds, userId);
+    const patch: {
+      title?: string;
+      content?: string;
+      isPinned?: boolean;
+      isArchived?: boolean;
+      tags?: Awaited<ReturnType<TagsService['getTagsByIds']>>;
+    } = {};
 
-    if (noteTags.length !== tagIds.length) {
-      throw new BadRequestException(
-        'Some of the provided tag IDs do not exist',
-      );
+    if (dto.title !== undefined) patch.title = dto.title;
+    if (dto.content !== undefined) patch.content = dto.content;
+    if (dto.isPinned !== undefined) patch.isPinned = dto.isPinned;
+    if (dto.isArchived !== undefined) patch.isArchived = dto.isArchived;
+
+    if (dto.tagIds !== undefined) {
+      const noteTags = await this.tagsService.getTagsByIds(dto.tagIds, userId);
+      if (noteTags.length !== dto.tagIds.length) {
+        throw new BadRequestException(
+          'Some of the provided tag IDs do not exist',
+        );
+      }
+      patch.tags = noteTags;
     }
 
-    return this.notesService.updateNote(id, userId, {
-      title: dto.title,
-      content: dto.content,
-      isPinned: dto.isPinned,
-      isArchived: dto.isArchived,
-      tags: noteTags,
-    });
+    return this.notesService.updateNote(id, userId, patch);
   }
 
   // Delete a note only when it belongs to the authenticated user.

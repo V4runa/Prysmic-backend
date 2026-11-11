@@ -3,9 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { Habit } from './habit.entity';
 import { HabitCheck } from './habit-check.entity';
+import { Note } from '../notes/notes.entity';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
 import { UpdateHabitDto } from '../../dtos/update-habit.dto';
 import { HabitFrequency } from '../../enums/habit-frequency.enum';
+
+type OriginNoteSummary = { id: number; title: string };
 
 function parseFrequency(value?: string): HabitFrequency {
   if (Object.values(HabitFrequency).includes(value as HabitFrequency)) {
@@ -114,15 +117,67 @@ export class HabitService {
     private habitRepo: Repository<Habit>,
     @InjectRepository(HabitCheck)
     private checkRepo: Repository<HabitCheck>,
+    @InjectRepository(Note)
+    private noteRepo: Repository<Note>,
   ) {}
 
   async createHabit(userId: number, dto: CreateHabitDto) {
+    const origin = await this.requireOwnedOrigin(userId, dto.originNoteId);
     const habit = this.habitRepo.create({
       ...dto,
       frequency: parseFrequency(dto.frequency),
       userId,
+      originNoteId: origin?.id ?? null,
     });
-    return this.habitRepo.save(habit);
+    const saved = await this.habitRepo.save(habit);
+    return this.withOrigin(saved, origin);
+  }
+
+  /**
+   * A missing note and a note owned by someone else both 404 with the same
+   * message, so the response does not reveal that the other note exists.
+   * Null and omitted both mean "no source note".
+   */
+  private async requireOwnedOrigin(
+    userId: number,
+    originNoteId?: number | null,
+  ): Promise<OriginNoteSummary | null> {
+    if (originNoteId == null) return null;
+    const origins = await this.lookupOwnedOrigins(userId, [originNoteId]);
+    const origin = origins.get(originNoteId);
+    if (!origin) throw new NotFoundException('Note not found');
+    return origin;
+  }
+
+  /** Titles for source notes that still exist and belong to this user. */
+  private async lookupOwnedOrigins(
+    userId: number,
+    originNoteIds: Array<number | null | undefined>,
+  ): Promise<Map<number, OriginNoteSummary>> {
+    const ids = [
+      ...new Set(
+        originNoteIds.filter((id): id is number => typeof id === 'number'),
+      ),
+    ];
+    const summaries = new Map<number, OriginNoteSummary>();
+    if (ids.length === 0) return summaries;
+
+    const notes = await this.noteRepo.find({
+      where: { id: In(ids), userId },
+      select: { id: true, title: true },
+    });
+    for (const note of notes) {
+      summaries.set(note.id, { id: note.id, title: note.title });
+    }
+    return summaries;
+  }
+
+  private withOrigin(habit: Habit, origin: OriginNoteSummary | null) {
+    return {
+      ...habit,
+      originNoteId: habit.originNoteId ?? null,
+      originNote: origin,
+    };
   }
 
   // Load only the check dates for the given habits, grouped by habitId.
@@ -155,17 +210,18 @@ export class HabitService {
     return grouped;
   }
 
-  private withStreaks(habit: Habit, dates: string[], today: string) {
+  private withStreaks(
+    habit: Habit,
+    dates: string[],
+    today: string,
+    origin: OriginNoteSummary | null,
+  ) {
     const s = computeStreaks(dates, today);
     return {
-      ...habit,
+      ...this.withOrigin(habit, origin),
       checkedToday: s.checkedToday,
       currentStreak: s.currentStreak,
       longestStreak: s.longestStreak,
-    } as Habit & {
-      checkedToday: boolean;
-      currentStreak: number;
-      longestStreak: number;
     };
   }
 
@@ -180,9 +236,18 @@ export class HabitService {
       habits.map((h) => h.id),
       windowStartDate(today),
     );
+    const origins = await this.lookupOwnedOrigins(
+      userId,
+      habits.map((h) => h.originNoteId),
+    );
 
     return habits.map((h) =>
-      this.withStreaks(h, datesByHabit.get(h.id) ?? [], today),
+      this.withStreaks(
+        h,
+        datesByHabit.get(h.id) ?? [],
+        today,
+        h.originNoteId != null ? (origins.get(h.originNoteId) ?? null) : null,
+      ),
     );
   }
 
@@ -198,11 +263,15 @@ export class HabitService {
       where: { habitId, date: MoreThanOrEqual(windowStartDate(today)) },
       select: { date: true },
     });
+    const origins = await this.lookupOwnedOrigins(userId, [habit.originNoteId]);
 
     return this.withStreaks(
       habit,
       dates.map((d) => d.date),
       today,
+      habit.originNoteId != null
+        ? (origins.get(habit.originNoteId) ?? null)
+        : null,
     );
   }
 

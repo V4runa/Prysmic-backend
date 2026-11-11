@@ -4,11 +4,12 @@ import { Habit } from './habit.entity';
 import { HabitCheck } from './habit-check.entity';
 import { HabitService } from './habit.service';
 import { HabitController } from './habit.controller';
+import { Note } from '../notes/notes.entity';
 import { UserModule } from '../users/user.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Habit, HabitCheck]),
+    TypeOrmModule.forFeature([Habit, HabitCheck, Note]),
     forwardRef(() => UserModule),
   ],
   providers: [HabitService],

@@ -39,8 +39,16 @@ export class Habit {
   @Column({ type: 'enum', enum: HabitFrequency, default: HabitFrequency.DAILY })
   frequency: HabitFrequency;
 
-  @ManyToOne(() => Note, { nullable: true, onDelete: 'SET NULL' })
-  originNote?: Note;
+  @ManyToOne(() => Note, (note) => note.habitsThatOriginatedHere, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'originNoteId' })
+  originNote?: Note | null;
+
+  /** FK column for originNote. Null when the habit has no source note. */
+  @Column({ nullable: true })
+  originNoteId?: number | null;
 
   @Column({ default: true })
   isActive: boolean;
