@@ -74,6 +74,9 @@ describe('account deletion', () => {
     expect(sql.indexOf('SET "originNoteId" = NULL')).toBeLessThan(
       sql.indexOf('DELETE FROM "notes"'),
     );
+    expect(sql.indexOf('UPDATE "task"')).toBeLessThan(
+      sql.indexOf('DELETE FROM "notes"'),
+    );
     expect(sql.indexOf('DELETE FROM "note_tags"')).toBeLessThan(
       sql.indexOf('DELETE FROM "tags"'),
     );

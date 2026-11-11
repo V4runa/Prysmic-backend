@@ -472,6 +472,10 @@ describe('Task and tag sharing (controller + service)', () => {
         { provide: getRepositoryToken(Tag), useValue: memory.tagRepo },
         { provide: getRepositoryToken(User), useValue: memory.userRepo },
         {
+          provide: getRepositoryToken(Note),
+          useValue: { find: async () => [] },
+        },
+        {
           provide: getRepositoryToken(AuthToken),
           useValue: { manager: {} },
         },

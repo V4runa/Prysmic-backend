@@ -402,6 +402,12 @@ describe('account deletion and password policy against Postgres', () => {
       [idB, ownedA.noteId],
     );
     const crossHabitId = Number(cross[0].id);
+    const crossTask = await admin.query(
+      `INSERT INTO "task" ("title", "userId", "originNoteId")
+       VALUES ('beta-cross-task', $1, $2) RETURNING "id"`,
+      [idB, ownedA.noteId],
+    );
+    const crossTaskId = Number(crossTask[0].id);
 
     const tables = await userOwnedTables();
     for (const name of OWNED_TABLES) expect(tables).toContain(name);
@@ -493,6 +499,13 @@ describe('account deletion and password policy against Postgres', () => {
     );
     expect(crossHabit).toEqual([
       { name: 'beta-cross-habit', userId: idB, originNoteId: null },
+    ]);
+    const crossTaskRow = await admin.query(
+      `SELECT "title", "userId", "originNoteId" FROM "task" WHERE "id" = $1`,
+      [crossTaskId],
+    );
+    expect(crossTaskRow).toEqual([
+      { title: 'beta-cross-task', userId: idB, originNoteId: null },
     ]);
     expect(await orphanCounts()).toEqual({
       note_tags: 0,
@@ -706,9 +719,15 @@ async function orphanCounts(): Promise<Record<string, number>> {
          OR NOT EXISTS (SELECT 1 FROM "tags" g WHERE g."id" = tt."tagsId")`,
     habit_check: `SELECT COUNT(*)::int AS n FROM "habit_check" hc
       WHERE NOT EXISTS (SELECT 1 FROM "habit" h WHERE h."id" = hc."habitId")`,
-    origin: `SELECT COUNT(*)::int AS n FROM "habit" h
-      WHERE h."originNoteId" IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM "notes" n WHERE n."id" = h."originNoteId")`,
+    origin: `SELECT (
+        (SELECT COUNT(*) FROM "habit" h
+          WHERE h."originNoteId" IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM "notes" n WHERE n."id" = h."originNoteId"))
+        +
+        (SELECT COUNT(*) FROM "task" t
+          WHERE t."originNoteId" IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM "notes" n WHERE n."id" = t."originNoteId"))
+      )::int AS n`,
     attachment_note: `SELECT COUNT(*)::int AS n FROM "note_attachments" a
       WHERE NOT EXISTS (SELECT 1 FROM "notes" n WHERE n."id" = a."noteId")`,
   };

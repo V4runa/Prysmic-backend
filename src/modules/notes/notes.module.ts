@@ -3,6 +3,7 @@ import { Note } from './notes.entity';
 import { NoteAttachment } from './note-attachment.entity';
 import { Tag } from '../tags/tags.entity';
 import { Habit } from '../habits/habit.entity';
+import { Task } from '../tasks/tasks.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { NotesController } from './notes.controller';
 import { NoteAttachmentsController } from './note-attachments.controller';
@@ -13,7 +14,7 @@ import { TagsModule } from '../tags/tags.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Note, NoteAttachment, Tag, Habit]),
+    TypeOrmModule.forFeature([Note, NoteAttachment, Tag, Habit, Task]),
     forwardRef(() => UserModule),
     forwardRef(() => TagsModule),
   ],

@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Tag } from '../tags/tags.entity';
+import { Note } from '../notes/notes.entity';
 
 export enum TaskPriority {
   LOW = 1,
@@ -26,7 +27,7 @@ export class Task {
   @Column()
   userId: number;
 
-  @ManyToOne(() => User, user => user.tasks, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.tasks, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
 
@@ -53,6 +54,17 @@ export class Task {
 
   @Column({ type: 'timestamp', nullable: true })
   archivedAt?: Date | null;
+
+  @ManyToOne(() => Note, (note) => note.tasksThatOriginatedHere, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'originNoteId' })
+  originNote?: Note | null;
+
+  /** FK column for originNote. Null when the task has no source note. */
+  @Column({ nullable: true })
+  originNoteId?: number | null;
 
   @ManyToMany(() => Tag, { nullable: true })
   @JoinTable({

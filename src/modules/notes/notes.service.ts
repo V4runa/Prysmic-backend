@@ -4,6 +4,7 @@ import { In, Repository } from 'typeorm';
 import { Note } from './notes.entity';
 import { Tag } from '../tags/tags.entity';
 import { Habit } from '../habits/habit.entity';
+import { Task } from '../tasks/tasks.entity';
 import { UserService } from '../users/user.service';
 
 // Notes are stored as HTML and can grow large. The list view only renders a
@@ -25,6 +26,7 @@ export class NotesService {
     @InjectRepository(Note) private notesRepository: Repository<Note>,
     @InjectRepository(Tag) private tagsRepository: Repository<Tag>,
     @InjectRepository(Habit) private habitRepository: Repository<Habit>,
+    @InjectRepository(Task) private taskRepository: Repository<Task>,
     private userService: UserService,
   ) {}
 
@@ -79,6 +81,7 @@ export class NotesService {
       note.content = truncateNotePreview(note.content);
     }
     await this.attachOriginatedContracts(notes, userId);
+    await this.attachOriginatedTasks(notes, userId);
     return notes;
   }
 
@@ -141,6 +144,7 @@ export class NotesService {
     userId: number,
   ): Promise<Note> {
     await this.attachOriginatedContracts([note], userId);
+    await this.attachOriginatedTasks([note], userId);
     return note;
   }
 
@@ -172,6 +176,43 @@ export class NotesService {
     }
     for (const note of notes) {
       note.originatedContracts = byNote.get(note.id) ?? [];
+    }
+  }
+
+  /**
+   * One query for the page. Only tasks owned by the same user, and only id,
+   * title, and isComplete (the task's completed column). Archived tasks stay
+   * on the list: archiving a task does not remove the link back to the note.
+   */
+  private async attachOriginatedTasks(
+    notes: Note[],
+    userId: number,
+  ): Promise<void> {
+    if (notes.length === 0) return;
+    const tasks = await this.taskRepository.find({
+      where: {
+        userId,
+        originNoteId: In(notes.map((note) => note.id)),
+      },
+      select: { id: true, title: true, isComplete: true, originNoteId: true },
+      order: { id: 'ASC' },
+    });
+    const byNote = new Map<
+      number,
+      { id: number; title: string; isComplete: boolean }[]
+    >();
+    for (const task of tasks) {
+      if (task.originNoteId == null) continue;
+      const list = byNote.get(task.originNoteId) ?? [];
+      list.push({
+        id: task.id,
+        title: task.title,
+        isComplete: task.isComplete,
+      });
+      byNote.set(task.originNoteId, list);
+    }
+    for (const note of notes) {
+      note.originatedTasks = byNote.get(note.id) ?? [];
     }
   }
 
