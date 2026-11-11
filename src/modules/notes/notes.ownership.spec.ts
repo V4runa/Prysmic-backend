@@ -15,6 +15,7 @@ import { UserService } from '../users/user.service';
 import { NoteAttachment } from './note-attachment.entity';
 import { NoteAttachmentsController } from './note-attachments.controller';
 import { NoteAttachmentsService } from './note-attachments.service';
+import { Habit } from '../habits/habit.entity';
 import { Note } from './notes.entity';
 import { NotesController } from './notes.controller';
 import { NotesService } from './notes.service';
@@ -104,6 +105,16 @@ function asNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function orderValue(
+  row: { isPinned: boolean; createdAt: Date; id: number },
+  column: string,
+): number {
+  if (column.endsWith('isPinned')) return row.isPinned ? 1 : 0;
+  if (column.endsWith('createdAt')) return row.createdAt.getTime();
+  if (column.endsWith('id')) return row.id;
+  return 0;
+}
+
 function idList(value: unknown): number[] | undefined {
   if (value == null) return undefined;
   if (
@@ -189,11 +200,44 @@ function createMemory() {
     },
   ];
 
+  const habits: {
+    id: number;
+    name: string;
+    userId: number;
+    originNoteId: number | null;
+    isActive: boolean;
+  }[] = [
+    {
+      id: 701,
+      name: 'alpha-contract',
+      userId: USER_A_ID,
+      originNoteId: NOTE_A_ID,
+      isActive: true,
+    },
+    {
+      id: 702,
+      name: 'alpha-retired-contract',
+      userId: USER_A_ID,
+      originNoteId: NOTE_A_ID,
+      isActive: false,
+    },
+    {
+      id: 703,
+      name: 'beta-secret-contract',
+      userId: USER_B_ID,
+      originNoteId: NOTE_A_ID,
+      isActive: true,
+    },
+  ];
+
   let noteSeq = 3000;
   let attachmentSeq = 8000;
+  let noteClock = Date.parse('2026-06-01T00:00:00.000Z');
 
   const noteRepo = {
     create(partial: Partial<StoredNote>): StoredNote {
+      const createdAt = new Date(noteClock);
+      noteClock += 1000;
       return {
         id: 0,
         title: '',
@@ -202,8 +246,8 @@ function createMemory() {
         tags: [],
         isPinned: false,
         isArchived: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt,
+        updatedAt: createdAt,
         ...partial,
       };
     },
@@ -264,7 +308,13 @@ function createMemory() {
       return { affected: before - notes.length, raw: [] };
     },
     createQueryBuilder() {
-      const state: { userId?: number; take?: number; skip?: number } = {};
+      const state: {
+        userId?: number;
+        take?: number;
+        skip?: number;
+        archived?: boolean;
+        orders: { column: string; direction: 'ASC' | 'DESC' }[];
+      } = { orders: [] };
       const qb = {
         leftJoinAndSelect: () => qb,
         loadRelationCountAndMap: () => qb,
@@ -273,7 +323,21 @@ function createMemory() {
             state.userId = asNumber(params.userId);
           return qb;
         },
-        orderBy: () => qb,
+        andWhere: (_sql: string, params?: { archived?: unknown }) => {
+          if (params && 'archived' in params) {
+            state.archived =
+              params.archived === true || params.archived === 'true';
+          }
+          return qb;
+        },
+        orderBy: (column: string, direction: 'ASC' | 'DESC' = 'ASC') => {
+          state.orders = [{ column, direction }];
+          return qb;
+        },
+        addOrderBy: (column: string, direction: 'ASC' | 'DESC' = 'ASC') => {
+          state.orders.push({ column, direction });
+          return qb;
+        },
         take: (n: number) => {
           state.take = n;
           return qb;
@@ -286,9 +350,20 @@ function createMemory() {
           let rows = notes.filter(
             (row) => state.userId === undefined || row.userId === state.userId,
           );
-          rows = [...rows].sort(
-            (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-          );
+          if (state.archived !== undefined) {
+            rows = rows.filter((row) => row.isArchived === state.archived);
+          }
+          const orders = state.orders;
+          rows = [...rows].sort((a, b) => {
+            for (const order of orders) {
+              const av = orderValue(a, order.column);
+              const bv = orderValue(b, order.column);
+              if (av === bv) continue;
+              const cmp = av < bv ? -1 : 1;
+              return order.direction === 'DESC' ? -cmp : cmp;
+            }
+            return 0;
+          });
           const skip = state.skip ?? 0;
           rows = rows.slice(skip);
           if (state.take !== undefined) rows = rows.slice(0, state.take);
@@ -302,6 +377,46 @@ function createMemory() {
         },
       };
       return qb;
+    },
+  };
+
+  const habitRepo = {
+    async find(options?: {
+      where?: {
+        id?: unknown;
+        userId?: unknown;
+        isActive?: boolean;
+        originNoteId?: unknown;
+      };
+      order?: { id?: 'ASC' | 'DESC' };
+    }) {
+      const where = options?.where ?? {};
+      const originIds = idList(where.originNoteId);
+      let rows = habits.filter((habit) => {
+        if (
+          where.userId !== undefined &&
+          habit.userId !== asNumber(where.userId)
+        ) {
+          return false;
+        }
+        if (where.isActive !== undefined && habit.isActive !== where.isActive) {
+          return false;
+        }
+        if (
+          originIds &&
+          (habit.originNoteId == null ||
+            !originIds.includes(habit.originNoteId))
+        ) {
+          return false;
+        }
+        return true;
+      });
+      if (options?.order?.id === 'ASC') {
+        rows = [...rows].sort((a, b) => a.id - b.id);
+      } else if (options?.order?.id === 'DESC') {
+        rows = [...rows].sort((a, b) => b.id - a.id);
+      }
+      return rows.map((habit) => ({ ...habit }));
     },
   };
 
@@ -439,7 +554,15 @@ function createMemory() {
     },
   };
 
-  return { noteRepo, tagRepo, userRepo, attachmentRepo, notes, attachments };
+  return {
+    noteRepo,
+    tagRepo,
+    userRepo,
+    attachmentRepo,
+    habitRepo,
+    notes,
+    attachments,
+  };
 }
 
 describe('Note ownership (controller + service)', () => {
@@ -468,6 +591,7 @@ describe('Note ownership (controller + service)', () => {
         AuthRateLimiter,
         JwtStrategy,
         { provide: getRepositoryToken(Note), useValue: memory.noteRepo },
+        { provide: getRepositoryToken(Habit), useValue: memory.habitRepo },
         { provide: getRepositoryToken(Tag), useValue: memory.tagRepo },
         { provide: getRepositoryToken(User), useValue: memory.userRepo },
         {
@@ -910,5 +1034,224 @@ describe('Note ownership (controller + service)', () => {
     expect(after.body.map((item: { id: number }) => item.id)).not.toContain(
       uploadedId,
     );
+  });
+
+  it('keeps title, content, and tags when a pin or archive update omits them', async () => {
+    const created = await request(server())
+      .post('/notes')
+      .set(auth(tokenA))
+      .send({
+        title: 'partial-keep-title',
+        content: '<p>partial-keep-body</p>',
+        tagIds: [TAG_A_ID],
+      });
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+
+    const pinned = await request(server())
+      .put(`/notes/${id}`)
+      .set(auth(tokenA))
+      .send({ isPinned: true });
+    expect(pinned.status).toBe(200);
+    expect(pinned.body.title).toBe('partial-keep-title');
+    expect(pinned.body.content).toBe('<p>partial-keep-body</p>');
+    expect(pinned.body.isPinned).toBe(true);
+    expect(pinned.body.isArchived).toBe(false);
+    expect(pinned.body.tags.map((tag: { id: number }) => tag.id)).toEqual([
+      TAG_A_ID,
+    ]);
+
+    const retitled = await request(server())
+      .put(`/notes/${id}`)
+      .set(auth(tokenA))
+      .send({ title: 'partial-new-title' });
+    expect(retitled.status).toBe(200);
+    expect(retitled.body.title).toBe('partial-new-title');
+    expect(retitled.body.content).toBe('<p>partial-keep-body</p>');
+    expect(retitled.body.isPinned).toBe(true);
+    expect(retitled.body.tags.map((tag: { id: number }) => tag.id)).toEqual([
+      TAG_A_ID,
+    ]);
+
+    const archived = await request(server())
+      .put(`/notes/${id}`)
+      .set(auth(tokenA))
+      .send({ isArchived: true });
+    expect(archived.status).toBe(200);
+    expect(archived.body.title).toBe('partial-new-title');
+    expect(archived.body.content).toBe('<p>partial-keep-body</p>');
+    expect(archived.body.isPinned).toBe(true);
+    expect(archived.body.isArchived).toBe(true);
+    expect(archived.body.tags.map((tag: { id: number }) => tag.id)).toEqual([
+      TAG_A_ID,
+    ]);
+
+    const cleared = await request(server())
+      .put(`/notes/${id}`)
+      .set(auth(tokenA))
+      .send({ tagIds: [] });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.tags).toEqual([]);
+    expect(cleared.body.title).toBe('partial-new-title');
+    expect(cleared.body.content).toBe('<p>partial-keep-body</p>');
+    expect(cleared.body.isPinned).toBe(true);
+    expect(cleared.body.isArchived).toBe(true);
+  });
+
+  it('lists pinned notes first, then newest, and splits archived notes', async () => {
+    const older = await request(server())
+      .post('/notes')
+      .set(auth(tokenA))
+      .send({
+        title: 'order-older-unpinned',
+        content: '<p>older</p>',
+        tagIds: [],
+      });
+    const newer = await request(server())
+      .post('/notes')
+      .set(auth(tokenA))
+      .send({
+        title: 'order-newer-unpinned',
+        content: '<p>newer</p>',
+        tagIds: [],
+      });
+    const pinnedOlder = await request(server())
+      .post('/notes')
+      .set(auth(tokenA))
+      .send({
+        title: 'order-pinned-older',
+        content: '<p>pinned older</p>',
+        tagIds: [],
+      });
+    const pinnedNewer = await request(server())
+      .post('/notes')
+      .set(auth(tokenA))
+      .send({
+        title: 'order-pinned-newer',
+        content: '<p>pinned newer</p>',
+        tagIds: [],
+      });
+    expect(pinnedOlder.status).toBe(201);
+    expect(pinnedNewer.status).toBe(201);
+
+    const pinOlder = await request(server())
+      .put(`/notes/${pinnedOlder.body.id}`)
+      .set(auth(tokenA))
+      .send({ isPinned: true });
+    const pinNewer = await request(server())
+      .put(`/notes/${pinnedNewer.body.id}`)
+      .set(auth(tokenA))
+      .send({ isPinned: true });
+    expect(pinOlder.status).toBe(200);
+    expect(pinNewer.status).toBe(200);
+
+    const archivedNote = await request(server())
+      .post('/notes')
+      .set(auth(tokenA))
+      .send({
+        title: 'order-archived-hidden',
+        content: '<p>archived</p>',
+        tagIds: [TAG_A_ID],
+      });
+    const archive = await request(server())
+      .put(`/notes/${archivedNote.body.id}`)
+      .set(auth(tokenA))
+      .send({ isArchived: true });
+    expect(archive.status).toBe(200);
+    expect(archive.body.tags.map((tag: { id: number }) => tag.id)).toEqual([
+      TAG_A_ID,
+    ]);
+
+    const listed = await request(server())
+      .get(`/notes/user/${USER_A_ID}`)
+      .set(auth(tokenA));
+    expect(listed.status).toBe(200);
+    const titles = listed.body.map((note: { title: string }) => note.title);
+    expect(titles).not.toContain('order-archived-hidden');
+    expect(titles.indexOf('order-pinned-newer')).toBeLessThan(
+      titles.indexOf('order-pinned-older'),
+    );
+    expect(titles.indexOf('order-pinned-older')).toBeLessThan(
+      titles.indexOf('order-newer-unpinned'),
+    );
+    expect(titles.indexOf('order-newer-unpinned')).toBeLessThan(
+      titles.indexOf('order-older-unpinned'),
+    );
+
+    let seenUnpinned = false;
+    for (const note of listed.body as {
+      isPinned: boolean;
+      createdAt: string;
+    }[]) {
+      if (!note.isPinned) seenUnpinned = true;
+      expect(note.isPinned && seenUnpinned).toBe(false);
+    }
+    const pinnedDates = listed.body
+      .filter((note: { isPinned: boolean }) => note.isPinned)
+      .map((note: { createdAt: string }) => new Date(note.createdAt).getTime());
+    const unpinnedDates = listed.body
+      .filter((note: { isPinned: boolean }) => !note.isPinned)
+      .map((note: { createdAt: string }) => new Date(note.createdAt).getTime());
+    for (let i = 1; i < pinnedDates.length; i += 1) {
+      expect(pinnedDates[i]).toBeLessThanOrEqual(pinnedDates[i - 1]);
+    }
+    for (let i = 1; i < unpinnedDates.length; i += 1) {
+      expect(unpinnedDates[i]).toBeLessThanOrEqual(unpinnedDates[i - 1]);
+    }
+
+    const explicitActive = await request(server())
+      .get(`/notes/user/${USER_A_ID}?archived=false`)
+      .set(auth(tokenA));
+    expect(
+      explicitActive.body.map((note: { title: string }) => note.title),
+    ).not.toContain('order-archived-hidden');
+
+    const archivedList = await request(server())
+      .get(`/notes/user/${USER_A_ID}?archived=true`)
+      .set(auth(tokenA));
+    expect(archivedList.status).toBe(200);
+    const archivedTitles = archivedList.body.map(
+      (note: { title: string }) => note.title,
+    );
+    expect(archivedTitles).toContain('order-archived-hidden');
+    expect(archivedTitles).not.toContain('order-pinned-newer');
+    expect(archivedTitles).not.toContain(TITLE_A);
+    expect(
+      archivedList.body.every(
+        (note: { isArchived: boolean; userId: number }) =>
+          note.isArchived === true && note.userId === USER_A_ID,
+      ),
+    ).toBe(true);
+
+    expect(older.body.id).toEqual(expect.any(Number));
+    expect(newer.body.id).toEqual(expect.any(Number));
+  });
+
+  it('returns active contracts that originated from the note and hides the rest', async () => {
+    const read = await request(server())
+      .get(`/notes/${NOTE_A_ID}`)
+      .set(auth(tokenA));
+    expect(read.status).toBe(200);
+    expect(read.body.originatedContracts).toEqual([
+      { id: 701, title: 'alpha-contract' },
+    ]);
+    expect(JSON.stringify(read.body)).not.toContain('alpha-retired-contract');
+    expect(JSON.stringify(read.body)).not.toContain('beta-secret-contract');
+
+    const listed = await request(server())
+      .get(`/notes/user/${USER_A_ID}`)
+      .set(auth(tokenA));
+    const alpha = listed.body.find(
+      (note: { id: number }) => Number(note.id) === NOTE_A_ID,
+    );
+    expect(alpha.originatedContracts).toEqual([
+      { id: 701, title: 'alpha-contract' },
+    ]);
+
+    const foreign = await request(server())
+      .get(`/notes/${NOTE_A_ID}`)
+      .set(auth(tokenB));
+    expect(foreign.status).toBe(404);
+    expect(JSON.stringify(foreign.body)).not.toContain('alpha-contract');
   });
 });

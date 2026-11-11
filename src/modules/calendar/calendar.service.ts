@@ -110,6 +110,7 @@ export class CalendarService {
   }
 
   async createEvent(userId: number, dto: CreateCalendarEventDto) {
+    await this.assertOwnedLink(userId, dto.linkedType, dto.linkedId);
     const event = this.eventRepo.create({
       ...this.normalizeEventInput(dto),
       allDay: dto.allDay ?? true,
@@ -131,8 +132,55 @@ export class CalendarService {
 
   async updateEvent(id: number, userId: number, dto: UpdateCalendarEventDto) {
     const event = await this.getEvent(id, userId);
+    if (dto.linkedType !== undefined || dto.linkedId !== undefined) {
+      const linkedType =
+        dto.linkedType !== undefined ? dto.linkedType : event.linkedType;
+      const linkedId =
+        dto.linkedId !== undefined ? dto.linkedId : event.linkedId;
+      await this.assertOwnedLink(userId, linkedType, linkedId);
+    }
     this.eventRepo.merge(event, this.normalizeEventInput(dto));
     return this.eventRepo.save(event);
+  }
+
+  /**
+   * A link is stored only when the target row belongs to this user. A missing
+   * id and another user's id both 404 with the same message. Omitting the
+   * link, or clearing both sides, is allowed. One side on its own is not a
+   * target, so there is nothing to check.
+   */
+  private async assertOwnedLink(
+    userId: number,
+    linkedType?: CalendarLinkType | null,
+    linkedId?: number | null,
+  ): Promise<void> {
+    if (linkedType == null || linkedId == null) return;
+
+    const where = { id: linkedId, userId };
+    let owned = false;
+    switch (linkedType) {
+      case CalendarLinkType.NOTE:
+        owned = !!(await this.noteRepo.findOne({
+          where,
+          select: { id: true },
+        }));
+        break;
+      case CalendarLinkType.TASK:
+        owned = !!(await this.taskRepo.findOne({
+          where,
+          select: { id: true },
+        }));
+        break;
+      case CalendarLinkType.HABIT:
+        owned = !!(await this.habitRepo.findOne({
+          where,
+          select: { id: true },
+        }));
+        break;
+      default:
+        owned = false;
+    }
+    if (!owned) throw new NotFoundException('Linked item not found');
   }
 
   async deleteEvent(id: number, userId: number) {
@@ -250,9 +298,12 @@ export class CalendarService {
       ? Math.max(0, daysBetween(event.startDate, event.endDate))
       : 0;
 
-    const intersects = (occStart: string): { startDate: string; endDate: string } | null => {
+    const intersects = (
+      occStart: string,
+    ): { startDate: string; endDate: string } | null => {
       const occEnd = addDays(occStart, duration);
-      if (occStart <= to && occEnd >= from) return { startDate: occStart, endDate: occEnd };
+      if (occStart <= to && occEnd >= from)
+        return { startDate: occStart, endDate: occEnd };
       return null;
     };
 
@@ -496,9 +547,12 @@ export class CalendarService {
         : Promise.resolve([]),
     ]);
 
-    for (const n of notes) titles.set(key(CalendarLinkType.NOTE, n.id), n.title);
-    for (const t of tasks) titles.set(key(CalendarLinkType.TASK, t.id), t.title);
-    for (const h of habits) titles.set(key(CalendarLinkType.HABIT, h.id), h.name);
+    for (const n of notes)
+      titles.set(key(CalendarLinkType.NOTE, n.id), n.title);
+    for (const t of tasks)
+      titles.set(key(CalendarLinkType.TASK, t.id), t.title);
+    for (const h of habits)
+      titles.set(key(CalendarLinkType.HABIT, h.id), h.name);
 
     return titles;
   }

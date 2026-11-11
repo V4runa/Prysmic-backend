@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Note } from './notes.entity';
 import { Tag } from '../tags/tags.entity';
+import { Habit } from '../habits/habit.entity';
 import { UserService } from '../users/user.service';
 
 // Notes are stored as HTML and can grow large. The list view only renders a
@@ -23,6 +24,7 @@ export class NotesService {
   constructor(
     @InjectRepository(Note) private notesRepository: Repository<Note>,
     @InjectRepository(Tag) private tagsRepository: Repository<Tag>,
+    @InjectRepository(Habit) private habitRepository: Repository<Habit>,
     private userService: UserService,
   ) {}
 
@@ -47,22 +49,27 @@ export class NotesService {
     });
 
     const saved = await this.notesRepository.save(note);
-    return this.present(saved);
+    return this.withOriginatedContracts(this.present(saved), userId);
   }
 
-  // Get notes for a specific user, newest first.
-  // limit/offset are optional; when omitted all notes are returned
-  // (preserves existing behaviour for callers that page client-side).
+  // Get notes for a specific user. Pinned notes come first, then newest.
+  // Archived notes are omitted unless `archived` is true, which returns only
+  // archived notes. limit/offset are optional; when omitted the filtered set
+  // is returned in full (callers that page client-side keep working).
   async getNotesByUser(
     userId: number,
-    options: { limit?: number; offset?: number } = {},
+    options: { limit?: number; offset?: number; archived?: boolean } = {},
   ): Promise<Note[]> {
     const qb = this.notesRepository
       .createQueryBuilder('note')
       .leftJoinAndSelect('note.tags', 'tags')
       .loadRelationCountAndMap('note.attachmentCount', 'note.attachments')
       .where('note.userId = :userId', { userId })
-      .orderBy('note.createdAt', 'DESC');
+      .andWhere('note.isArchived = :archived', {
+        archived: options.archived === true,
+      })
+      .orderBy('note.isPinned', 'DESC')
+      .addOrderBy('note.createdAt', 'DESC');
 
     if (options.limit !== undefined) qb.take(options.limit);
     if (options.offset !== undefined) qb.skip(options.offset);
@@ -71,6 +78,7 @@ export class NotesService {
     for (const note of notes) {
       note.content = truncateNotePreview(note.content);
     }
+    await this.attachOriginatedContracts(notes, userId);
     return notes;
   }
 
@@ -79,18 +87,14 @@ export class NotesService {
   // response does not reveal that the other note exists. The user relation is
   // not loaded: that row includes the password hash.
   async getNoteById(id: number, userId: number): Promise<Note> {
-    const note = await this.notesRepository.findOne({
-      where: { id, userId },
-      relations: ['tags'],
-    });
-    if (!note) {
-      throw new NotFoundException('Note not found');
-    }
-    return this.present(note);
+    const note = await this.findOwnedNote(id, userId);
+    return this.withOriginatedContracts(note, userId);
   }
 
   // Update fields the caller is allowed to change. userId is taken from the
   // authenticated owner already checked above and is never copied from input.
+  // Absent fields stay as they are: a pin/archive update must not wipe the
+  // title, the body, or the tags.
   async updateNote(
     id: number,
     userId: number,
@@ -102,7 +106,7 @@ export class NotesService {
       tags?: Tag[];
     },
   ): Promise<Note> {
-    const note = await this.getNoteById(id, userId);
+    const note = await this.findOwnedNote(id, userId);
     if (noteData.title !== undefined) note.title = noteData.title;
     if (noteData.content !== undefined) note.content = noteData.content;
     if (noteData.isPinned !== undefined) note.isPinned = noteData.isPinned;
@@ -110,7 +114,7 @@ export class NotesService {
       note.isArchived = noteData.isArchived;
     if (noteData.tags !== undefined) note.tags = noteData.tags;
     const saved = await this.notesRepository.save(note);
-    return this.present(saved);
+    return this.withOriginatedContracts(this.present(saved), userId);
   }
 
   // Delete a note only when the id and owner match.
@@ -118,6 +122,56 @@ export class NotesService {
     const result = await this.notesRepository.delete({ id, userId });
     if (result.affected === 0) {
       throw new NotFoundException('Note not found');
+    }
+  }
+
+  private async findOwnedNote(id: number, userId: number): Promise<Note> {
+    const note = await this.notesRepository.findOne({
+      where: { id, userId },
+      relations: ['tags'],
+    });
+    if (!note) {
+      throw new NotFoundException('Note not found');
+    }
+    return this.present(note);
+  }
+
+  private async withOriginatedContracts(
+    note: Note,
+    userId: number,
+  ): Promise<Note> {
+    await this.attachOriginatedContracts([note], userId);
+    return note;
+  }
+
+  /**
+   * One query for the page. Only active habits owned by the same user, and
+   * only id plus the habit name (exposed as title). Inactive habits are the
+   * soft-deleted contracts and are left off the link-back list.
+   */
+  private async attachOriginatedContracts(
+    notes: Note[],
+    userId: number,
+  ): Promise<void> {
+    if (notes.length === 0) return;
+    const habits = await this.habitRepository.find({
+      where: {
+        userId,
+        isActive: true,
+        originNoteId: In(notes.map((note) => note.id)),
+      },
+      select: { id: true, name: true, originNoteId: true },
+      order: { id: 'ASC' },
+    });
+    const byNote = new Map<number, { id: number; title: string }[]>();
+    for (const habit of habits) {
+      if (habit.originNoteId == null) continue;
+      const list = byNote.get(habit.originNoteId) ?? [];
+      list.push({ id: habit.id, title: habit.name });
+      byNote.set(habit.originNoteId, list);
+    }
+    for (const note of notes) {
+      note.originatedContracts = byNote.get(note.id) ?? [];
     }
   }
 

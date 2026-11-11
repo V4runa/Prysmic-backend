@@ -60,4 +60,10 @@ export class Note {
 
   /** Populated on list reads via loadRelationCountAndMap; not a real column. */
   attachmentCount?: number;
+
+  /**
+   * Active habits created from this note. Filled in on note reads; not a column.
+   * `title` is the habit name, so a note can link back without a second request.
+   */
+  originatedContracts?: { id: number; title: string }[];
 }
