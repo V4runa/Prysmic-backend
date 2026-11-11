@@ -132,7 +132,11 @@ describe('Shared note and task tags against disposable Postgres', () => {
     });
     const taskRepo = dataSource.getRepository(Task);
     const tagRepo = dataSource.getRepository(Tag);
-    taskService = new TaskService(taskRepo, dataSource.getRepository(User));
+    taskService = new TaskService(
+      taskRepo,
+      dataSource.getRepository(User),
+      dataSource.getRepository(Note),
+    );
     tagsService = new TagsService(tagRepo, {
       findById: async (id: number) =>
         dataSource.getRepository(User).findOneBy({ id }),

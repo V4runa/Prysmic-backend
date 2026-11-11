@@ -5,12 +5,13 @@ import { TaskService } from './tasks.service';
 import { TaskController } from './tasks.controller';
 import { Tag } from '../tags/tags.entity';
 import { User } from '../users/user.entity';
+import { Note } from '../notes/notes.entity';
 import { UserModule } from '../users/user.module';
 import { TagsModule } from '../tags/tags.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Task, Tag, User]),
+    TypeOrmModule.forFeature([Task, Tag, User, Note]),
     UserModule,
     TagsModule,
   ],

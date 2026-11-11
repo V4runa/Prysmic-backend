@@ -16,6 +16,7 @@ import { NoteAttachment } from './note-attachment.entity';
 import { NoteAttachmentsController } from './note-attachments.controller';
 import { NoteAttachmentsService } from './note-attachments.service';
 import { Habit } from '../habits/habit.entity';
+import { Task } from '../tasks/tasks.entity';
 import { Note } from './notes.entity';
 import { NotesController } from './notes.controller';
 import { NotesService } from './notes.service';
@@ -230,6 +231,43 @@ function createMemory() {
     },
   ];
 
+  const tasks: {
+    id: number;
+    title: string;
+    userId: number;
+    originNoteId: number | null;
+    isComplete: boolean;
+  }[] = [
+    {
+      id: 801,
+      title: 'alpha-open-task',
+      userId: USER_A_ID,
+      originNoteId: NOTE_A_ID,
+      isComplete: false,
+    },
+    {
+      id: 802,
+      title: 'alpha-finished-task',
+      userId: USER_A_ID,
+      originNoteId: NOTE_A_ID,
+      isComplete: true,
+    },
+    {
+      id: 803,
+      title: 'beta-secret-task',
+      userId: USER_B_ID,
+      originNoteId: NOTE_A_ID,
+      isComplete: false,
+    },
+    {
+      id: 804,
+      title: 'alpha-other-note-task',
+      userId: USER_A_ID,
+      originNoteId: NOTE_B_ID,
+      isComplete: false,
+    },
+  ];
+
   let noteSeq = 3000;
   let attachmentSeq = 8000;
   let noteClock = Date.parse('2026-06-01T00:00:00.000Z');
@@ -420,6 +458,40 @@ function createMemory() {
     },
   };
 
+  const taskRepo = {
+    async find(options?: {
+      where?: {
+        userId?: unknown;
+        originNoteId?: unknown;
+      };
+      order?: { id?: 'ASC' | 'DESC' };
+    }) {
+      const where = options?.where ?? {};
+      const originIds = idList(where.originNoteId);
+      let rows = tasks.filter((task) => {
+        if (
+          where.userId !== undefined &&
+          task.userId !== asNumber(where.userId)
+        ) {
+          return false;
+        }
+        if (
+          originIds &&
+          (task.originNoteId == null || !originIds.includes(task.originNoteId))
+        ) {
+          return false;
+        }
+        return true;
+      });
+      if (options?.order?.id === 'ASC') {
+        rows = [...rows].sort((a, b) => a.id - b.id);
+      } else if (options?.order?.id === 'DESC') {
+        rows = [...rows].sort((a, b) => b.id - a.id);
+      }
+      return rows.map((task) => ({ ...task }));
+    },
+  };
+
   const tagRepo = {
     async find(options?: {
       where?: {
@@ -560,6 +632,7 @@ function createMemory() {
     userRepo,
     attachmentRepo,
     habitRepo,
+    taskRepo,
     notes,
     attachments,
   };
@@ -592,6 +665,7 @@ describe('Note ownership (controller + service)', () => {
         JwtStrategy,
         { provide: getRepositoryToken(Note), useValue: memory.noteRepo },
         { provide: getRepositoryToken(Habit), useValue: memory.habitRepo },
+        { provide: getRepositoryToken(Task), useValue: memory.taskRepo },
         { provide: getRepositoryToken(Tag), useValue: memory.tagRepo },
         { provide: getRepositoryToken(User), useValue: memory.userRepo },
         {
@@ -1253,5 +1327,45 @@ describe('Note ownership (controller + service)', () => {
       .set(auth(tokenB));
     expect(foreign.status).toBe(404);
     expect(JSON.stringify(foreign.body)).not.toContain('alpha-contract');
+  });
+
+  it('returns tasks that originated from the note, including completion, and hides the rest', async () => {
+    const read = await request(server())
+      .get(`/notes/${NOTE_A_ID}`)
+      .set(auth(tokenA));
+    expect(read.status).toBe(200);
+    expect(read.body.originatedTasks).toEqual([
+      { id: 801, title: 'alpha-open-task', isComplete: false },
+      { id: 802, title: 'alpha-finished-task', isComplete: true },
+    ]);
+    expect(JSON.stringify(read.body.originatedTasks)).not.toContain(
+      'beta-secret-task',
+    );
+    expect(JSON.stringify(read.body.originatedTasks)).not.toContain(
+      'alpha-other-note-task',
+    );
+    expect(Object.keys(read.body.originatedTasks[0]).sort()).toEqual([
+      'id',
+      'isComplete',
+      'title',
+    ]);
+
+    const listed = await request(server())
+      .get(`/notes/user/${USER_A_ID}`)
+      .set(auth(tokenA));
+    const alpha = listed.body.find(
+      (note: { id: number }) => Number(note.id) === NOTE_A_ID,
+    );
+    expect(alpha.originatedTasks).toEqual([
+      { id: 801, title: 'alpha-open-task', isComplete: false },
+      { id: 802, title: 'alpha-finished-task', isComplete: true },
+    ]);
+
+    const foreign = await request(server())
+      .get(`/notes/${NOTE_A_ID}`)
+      .set(auth(tokenB));
+    expect(foreign.status).toBe(404);
+    expect(JSON.stringify(foreign.body)).not.toContain('alpha-open-task');
+    expect(JSON.stringify(foreign.body)).not.toContain('alpha-finished-task');
   });
 });

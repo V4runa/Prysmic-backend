@@ -8,16 +8,16 @@ import { rowsFromQuery } from '../../database/query-rows';
  * Audited relations (user FK unless noted):
  * - notes, tags, note_tags (notesId / tagsId)
  * - habit (userId, and originNoteId -> notes), habit_check (habitId)
- * - task, task_tags (taskId / tagsId)
+ * - task (userId, and originNoteId -> notes), task_tags (taskId / tagsId)
  * - mood (logs), mood_options (custom moods)
  * - calendar_event
  * - note_attachments (userId and noteId)
  * - auth_tokens
  * - users
  *
- * originNoteId on someone else's habit is set to null. The habit stays.
- * That pointer is the only other-account column this touches, and only
- * because the note it names is about to disappear.
+ * originNoteId on someone else's habit or task is set to null. That row
+ * stays. Those pointers are the only other-account columns this touches,
+ * and only because the note they name is about to disappear.
  */
 const STATEMENTS = [
   `DELETE FROM "note_tags"
@@ -29,6 +29,9 @@ const STATEMENTS = [
   `DELETE FROM "habit_check"
    WHERE "habitId" IN (SELECT "id" FROM "habit" WHERE "userId" = $1)`,
   `UPDATE "habit"
+   SET "originNoteId" = NULL
+   WHERE "originNoteId" IN (SELECT "id" FROM "notes" WHERE "userId" = $1)`,
+  `UPDATE "task"
    SET "originNoteId" = NULL
    WHERE "originNoteId" IN (SELECT "id" FROM "notes" WHERE "userId" = $1)`,
   `DELETE FROM "note_attachments"

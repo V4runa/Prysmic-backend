@@ -4,12 +4,15 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Task } from './tasks.entity';
 import { CreateTaskDto } from '../../dtos/create-task.dto';
 import { UpdateTaskDto } from '../../dtos/update-task.dto';
 import { User } from '../users/user.entity';
 import { Tag } from '../tags/tags.entity';
+import { Note } from '../notes/notes.entity';
+
+type OriginNoteSummary = { id: number; title: string };
 
 export type TaskListFilters = {
   archived?: boolean;
@@ -32,17 +35,22 @@ export class TaskService {
 
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+
+    @InjectRepository(Note)
+    private readonly noteRepo: Repository<Note>,
   ) {}
 
   async create(userId: number, dto: CreateTaskDto, tags: Tag[]): Promise<Task> {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('User not found');
 
+    const origin = await this.requireOwnedOrigin(userId, dto.originNoteId);
     const task = this.taskRepo.create({
       ...withoutTagIds(dto),
       user,
       userId,
       tags,
+      originNoteId: origin?.id ?? null,
     });
     const saved = await this.taskRepo.save(task);
     return this.findOne(userId, saved.id);
@@ -100,11 +108,11 @@ export class TaskService {
     }
 
     const tasks = await query.getMany();
-    return tasks.map((task) => this.present(task));
+    return this.withOrigins(userId, tasks);
   }
 
   async findOne(userId: number, id: number): Promise<Task> {
-    return this.present(await this.loadOwned(userId, id));
+    return this.withOrigin(userId, await this.loadOwned(userId, id));
   }
 
   async update(
@@ -129,28 +137,28 @@ export class TaskService {
     const task = await this.loadOwned(userId, id);
     task.isArchived = true;
     task.archivedAt = new Date();
-    return this.present(await this.taskRepo.save(task));
+    return this.withOrigin(userId, await this.taskRepo.save(task));
   }
 
   async unarchive(userId: number, id: number): Promise<Task> {
     const task = await this.loadOwned(userId, id);
     task.isArchived = false;
     task.archivedAt = null;
-    return this.present(await this.taskRepo.save(task));
+    return this.withOrigin(userId, await this.taskRepo.save(task));
   }
 
   async markComplete(userId: number, id: number): Promise<Task> {
     const task = await this.loadOwned(userId, id);
     task.isComplete = true;
     task.completedAt = new Date();
-    return this.present(await this.taskRepo.save(task));
+    return this.withOrigin(userId, await this.taskRepo.save(task));
   }
 
   async markIncomplete(userId: number, id: number): Promise<Task> {
     const task = await this.loadOwned(userId, id);
     task.isComplete = false;
     task.completedAt = null;
-    return this.present(await this.taskRepo.save(task));
+    return this.withOrigin(userId, await this.taskRepo.save(task));
   }
 
   private async loadOwned(userId: number, id: number): Promise<Task> {
@@ -163,11 +171,74 @@ export class TaskService {
     return task;
   }
 
-  private present(task: Task): Task {
-    if (task && 'user' in task) {
-      delete (task as Partial<Task>).user;
+  /**
+   * A missing note and a note owned by someone else both 404 with the same
+   * message, so the response does not reveal that the other note exists.
+   * Null and omitted both mean "no source note".
+   */
+  private async requireOwnedOrigin(
+    userId: number,
+    originNoteId?: number | null,
+  ): Promise<OriginNoteSummary | null> {
+    if (originNoteId == null) return null;
+    const origins = await this.lookupOwnedOrigins(userId, [originNoteId]);
+    const origin = origins.get(originNoteId);
+    if (!origin) throw new NotFoundException('Note not found');
+    return origin;
+  }
+
+  /** Titles for source notes that still exist and belong to this user. */
+  private async lookupOwnedOrigins(
+    userId: number,
+    originNoteIds: Array<number | null | undefined>,
+  ): Promise<Map<number, OriginNoteSummary>> {
+    const ids = [
+      ...new Set(
+        originNoteIds.filter((id): id is number => typeof id === 'number'),
+      ),
+    ];
+    const summaries = new Map<number, OriginNoteSummary>();
+    if (ids.length === 0) return summaries;
+
+    const notes = await this.noteRepo.find({
+      where: { id: In(ids), userId },
+      select: { id: true, title: true },
+    });
+    for (const note of notes) {
+      summaries.set(note.id, { id: note.id, title: note.title });
     }
-    return task;
+    return summaries;
+  }
+
+  private async withOrigins(userId: number, tasks: Task[]): Promise<Task[]> {
+    const origins = await this.lookupOwnedOrigins(
+      userId,
+      tasks.map((task) => task.originNoteId),
+    );
+    return tasks.map((task) => this.shape(task, this.originFor(task, origins)));
+  }
+
+  private async withOrigin(userId: number, task: Task): Promise<Task> {
+    const origins = await this.lookupOwnedOrigins(userId, [task.originNoteId]);
+    return this.shape(task, this.originFor(task, origins));
+  }
+
+  private originFor(
+    task: Task,
+    origins: Map<number, OriginNoteSummary>,
+  ): OriginNoteSummary | null {
+    if (task.originNoteId == null) return null;
+    return origins.get(task.originNoteId) ?? null;
+  }
+
+  private shape(task: Task, origin: OriginNoteSummary | null): Task {
+    const view = {
+      ...task,
+      originNoteId: task.originNoteId ?? null,
+      originNote: origin ? { id: origin.id, title: origin.title } : null,
+    };
+    delete (view as Partial<Task>).user;
+    return view as Task;
   }
 }
 

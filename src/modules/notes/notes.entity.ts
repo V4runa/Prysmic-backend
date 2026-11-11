@@ -13,6 +13,7 @@ import {
 import { Tag } from '../tags/tags.entity';
 import { User } from '../users/user.entity';
 import { Habit } from '../habits/habit.entity';
+import { Task } from '../tasks/tasks.entity';
 import { NoteAttachment } from './note-attachment.entity';
 
 @Entity('notes')
@@ -55,6 +56,9 @@ export class Note {
   @OneToMany(() => Habit, (habit) => habit.originNote)
   habitsThatOriginatedHere: Habit[];
 
+  @OneToMany(() => Task, (task) => task.originNote)
+  tasksThatOriginatedHere: Task[];
+
   @OneToMany(() => NoteAttachment, (attachment) => attachment.note)
   attachments: NoteAttachment[];
 
@@ -66,4 +70,10 @@ export class Note {
    * `title` is the habit name, so a note can link back without a second request.
    */
   originatedContracts?: { id: number; title: string }[];
+
+  /**
+   * Tasks created from this note. Filled in on note reads; not a column.
+   * `isComplete` is the task's completed column.
+   */
+  originatedTasks?: { id: number; title: string; isComplete: boolean }[];
 }
