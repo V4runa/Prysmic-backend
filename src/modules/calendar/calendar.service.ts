@@ -25,6 +25,7 @@ import {
   CalendarMoodItem,
   CalendarNoteItem,
   CalendarTaskItem,
+  CalendarTaskReason,
 } from './calendar.types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -307,18 +308,43 @@ export class CalendarService {
     tsFrom: Date,
     tsTo: Date,
   ): Promise<CalendarTaskItem[]> {
+    // Same widened timestamp window as notes. A task is in the feed when its
+    // due date is in that window, or it is still complete and completedAt is.
+    // `where` as an array is OR; both branches keep the userId and archive
+    // filters so another user's tasks cannot ride along on the completion side.
     const tasks = await this.taskRepo.find({
-      where: { userId, isArchived: false, dueDate: Between(tsFrom, tsTo) },
-      select: { id: true, title: true, priority: true, isComplete: true, dueDate: true },
+      where: [
+        { userId, isArchived: false, dueDate: Between(tsFrom, tsTo) },
+        {
+          userId,
+          isArchived: false,
+          isComplete: true,
+          completedAt: Between(tsFrom, tsTo),
+        },
+      ],
+      select: {
+        id: true,
+        title: true,
+        priority: true,
+        isComplete: true,
+        dueDate: true,
+        completedAt: true,
+      },
     });
-    return tasks.map((t) => ({
-      source: 'task',
-      id: t.id,
-      title: t.title,
-      priority: t.priority,
-      isComplete: t.isComplete,
-      dueDate: (t.dueDate as Date).toISOString(),
-    }));
+
+    // One object per task even if both OR branches match. The client decides
+    // whether the due day and the completion day are the same local day.
+    const byId = new Map<number, Task>();
+    for (const task of tasks) {
+      if (!byId.has(task.id)) byId.set(task.id, task);
+    }
+
+    const items: CalendarTaskItem[] = [];
+    for (const task of byId.values()) {
+      const item = toCalendarTask(task, tsFrom, tsTo);
+      if (item) items.push(item);
+    }
+    return items;
   }
 
   private async buildHabitItems(
@@ -486,4 +512,57 @@ export class CalendarService {
     if (!title) return undefined; // target was deleted — drop the stale link
     return { type: event.linkedType, id: event.linkedId, title };
   }
+}
+
+function inTimestampWindow(
+  value: Date | null | undefined,
+  from: Date,
+  to: Date,
+): value is Date {
+  if (value == null) return false;
+  const time = value.getTime();
+  return time >= from.getTime() && time <= to.getTime();
+}
+
+/**
+ * One feed row for a task. `completedAt` is ignored unless the task is still
+ * complete, so a stale timestamp on a reopened task does not invent a
+ * completion day. A complete task with no stored `completedAt` is not given
+ * one; it appears only when its due date is in the window.
+ */
+function toCalendarTask(
+  task: Pick<
+    Task,
+    'id' | 'title' | 'priority' | 'isComplete' | 'dueDate' | 'completedAt'
+  >,
+  tsFrom: Date,
+  tsTo: Date,
+): CalendarTaskItem | null {
+  const due = task.dueDate ?? null;
+  const completed =
+    task.isComplete && task.completedAt ? task.completedAt : null;
+  const dueInWindow = inTimestampWindow(due, tsFrom, tsTo);
+  const completedInWindow = inTimestampWindow(completed, tsFrom, tsTo);
+  if (!dueInWindow && !completedInWindow) return null;
+
+  let calendarReason: CalendarTaskReason = 'due';
+  if (dueInWindow && completedInWindow) calendarReason = 'both';
+  else if (completedInWindow) calendarReason = 'completed';
+
+  const completedAt = completed ? completed.toISOString() : null;
+  // No due date: repeat the completion instant so current clients, which only
+  // know how to place `dueDate`, land on the day the task was finished.
+  const dueDate = due ? due.toISOString() : completedAt;
+  if (!dueDate) return null;
+
+  return {
+    source: 'task',
+    id: task.id,
+    title: task.title,
+    priority: task.priority,
+    isComplete: task.isComplete,
+    dueDate,
+    completedAt,
+    calendarReason,
+  };
 }
