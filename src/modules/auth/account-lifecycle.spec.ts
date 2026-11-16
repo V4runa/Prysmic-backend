@@ -278,6 +278,7 @@ describe('account lifecycle units', () => {
       ),
       { assert: () => undefined } as never,
       {} as never,
+      { revokeAllForUser: () => Promise.resolve() } as never,
     );
     expect(() =>
       service.requestPasswordReset('known@example.test', '127.0.0.1'),
@@ -314,6 +315,7 @@ describe('account lifecycle units', () => {
       new JwtService({ secret: 'unit-secret' }),
       { seedSampleData: () => Promise.resolve() } as never,
       { sendVerificationEmail: () => Promise.resolve() } as never,
+      { issue: () => Promise.resolve('refresh-raw') } as never,
     );
 
     const asEmailOwner = await auth.login({

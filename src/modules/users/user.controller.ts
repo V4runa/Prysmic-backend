@@ -6,6 +6,7 @@ import {
   Body,
   Param,
   Req,
+  Res,
   UseGuards,
   UseInterceptors,
   UseFilters,
@@ -22,6 +23,8 @@ import { UserService, toPublicUser, PublicUser } from './user.service';
 import { AccountLifecycleService } from '../auth/account-lifecycle.service';
 import { RateLimitFilter } from '../auth/rate-limit.filter';
 import { clientIp } from '../auth/client-ip';
+import { clearRefreshCookie } from '../auth/sessions/refresh-cookie';
+import type { Response } from 'express';
 
 type AuthenticatedRequest = {
   user: { userId: number };
@@ -103,12 +106,14 @@ export class UserController {
   async deleteMe(
     @Req() req: AuthenticatedRequest,
     @Body() dto: DeleteAccountDto,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.lifecycle.deleteAccount(
       Number(req.user.userId),
       dto.password,
       clientIp(req),
     );
+    clearRefreshCookie(res);
   }
 
   // Another id and a missing id share one response so callers cannot tell them apart.

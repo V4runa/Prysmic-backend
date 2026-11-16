@@ -19,9 +19,9 @@ export class MoodOptionService {
   ) {}
 
   /**
-   * List a user's mood palette. The first time a user has none, seed the
-   * defaults so existing and new users start with a usable set (they remain
-   * fully editable/deletable afterwards).
+   * List a user's mood palette. An empty palette is seeded once, which is
+   * how a new account receives the defaults. Any palette that already has a
+   * mood is returned unchanged.
    */
   async getAll(userId: number): Promise<MoodOption[]> {
     let options = await this.findForUser(userId);
@@ -32,10 +32,7 @@ export class MoodOptionService {
     return options;
   }
 
-  async create(
-    userId: number,
-    dto: CreateMoodOptionDto,
-  ): Promise<MoodOption> {
+  async create(userId: number, dto: CreateMoodOptionDto): Promise<MoodOption> {
     const label = dto.label.trim();
     const existing = await this.repo.findOne({
       where: { user: { id: userId }, label },

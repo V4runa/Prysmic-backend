@@ -43,8 +43,10 @@ export class MoodOption {
 }
 
 /**
- * Default palette seeded for a user the first time they have no mood options.
- * These are fully editable/deletable afterwards.
+ * Default palette seeded when an account has no mood options yet.
+ * Order is the picker order. A palette that already has any mood is left
+ * alone, so these additions are not inserted into existing lists.
+ * Colors are tokens the client already knows how to paint.
  */
 export const DEFAULT_MOOD_OPTIONS: ReadonlyArray<{
   label: string;
@@ -52,11 +54,13 @@ export const DEFAULT_MOOD_OPTIONS: ReadonlyArray<{
   color: string;
 }> = [
   { label: 'Joyful', emoji: '☀️', color: 'amber' },
+  { label: 'Content', emoji: '🍃', color: 'emerald' },
   { label: 'Calm', emoji: '🌊', color: 'cyan' },
   { label: 'Focused', emoji: '🎯', color: 'blue' },
   { label: 'Tired', emoji: '🌙', color: 'violet' },
   { label: 'Anxious', emoji: '🌪️', color: 'rose' },
   { label: 'Inspired', emoji: '🔮', color: 'emerald' },
+  { label: 'Reflective', emoji: '🪞', color: 'slate' },
   { label: 'Grateful', emoji: '🕊️', color: 'yellow' },
   { label: 'Lonely', emoji: '🌫️', color: 'slate' },
   { label: 'Angry', emoji: '🔥', color: 'red' },

@@ -13,6 +13,7 @@ import { rowsFromQuery } from '../../database/query-rows';
  * - calendar_event
  * - note_attachments (userId and noteId)
  * - auth_tokens
+ * - refresh_tokens
  * - users
  *
  * originNoteId on someone else's habit or task is set to null. That row
@@ -45,6 +46,7 @@ const STATEMENTS = [
   `DELETE FROM "notes" WHERE "userId" = $1`,
   `DELETE FROM "tags" WHERE "userId" = $1`,
   `DELETE FROM "auth_tokens" WHERE "userId" = $1`,
+  `DELETE FROM "refresh_tokens" WHERE "userId" = $1`,
 ];
 
 /** Removes the account and everything it owns. False when the user is already gone. */

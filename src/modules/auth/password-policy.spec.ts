@@ -99,6 +99,7 @@ describe('password policy', () => {
       new JwtService({ secret: 'unit-secret' }),
       { seedSampleData: () => Promise.resolve() } as never,
       { sendVerificationEmail: () => undefined } as never,
+      { issue: () => Promise.resolve('refresh-raw') } as never,
     );
 
     await expect(
@@ -135,5 +136,6 @@ function service(user: User): AuthService {
     new JwtService({ secret: 'unit-secret' }),
     { seedSampleData: () => Promise.resolve() } as never,
     { sendVerificationEmail: () => undefined } as never,
+    { issue: () => Promise.resolve('refresh-raw') } as never,
   );
 }

@@ -13,6 +13,8 @@ import { AccountLifecycleService } from './account-lifecycle.service';
 import { INVALID_CREDENTIALS } from './account.constants';
 import { hashPassword } from './password';
 import { assertPasswordAllowed } from './password-policy';
+import { RefreshSessionService } from './sessions/refresh-session.service';
+import { refreshDenied } from './sessions/refresh-errors';
 
 interface SessionUser {
   id: number;
@@ -22,6 +24,13 @@ interface SessionUser {
   sessionVersion: number;
 }
 
+export interface IssuedSession {
+  access_token: string;
+  emailVerified: boolean;
+  /** Raw refresh token. The controller stores it in the cookie and drops it. */
+  refreshToken: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -29,6 +38,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly onboardingService: OnboardingService,
     private readonly lifecycle: AccountLifecycleService,
+    private readonly sessions: RefreshSessionService,
   ) {}
 
   /**
@@ -130,22 +140,55 @@ export class AuthService {
       newPassword,
       ip,
     );
+    // The version bump already kills older access tokens. Revoking the
+    // refresh families stops them from minting a token at the new version.
+    // This caller's replacement family is issued immediately after.
+    await this.sessions.revokeAllForUser(user.id);
     return this.issueSession(user);
   }
 
-  private issueSession(user: SessionUser) {
-    const payload = {
-      sub: user.id,
-      username: user.username,
-      email: user.email,
-      sv: user.sessionVersion ?? 0,
-    };
+  /**
+   * Exchanges the refresh cookie for a new access token and a rotated
+   * refresh token. Does not require the previous access token, so a client
+   * whose hour-long token has lapsed can continue.
+   */
+  async refresh(raw: string | null): Promise<IssuedSession> {
+    const rotated = await this.sessions.rotate(raw);
+    if (!rotated.ok) throw refreshDenied(rotated.reason);
+    const user = await this.userService.findById(rotated.userId);
+    if (!user) {
+      await this.sessions.revokePresented(rotated.refreshToken);
+      throw refreshDenied('revoked');
+    }
     return {
-      access_token: this.jwtService.sign(payload, {
-        expiresIn: '1h',
-      }),
+      access_token: this.signAccess(sessionUser(user)),
       emailVerified: user.emailVerified === true,
+      refreshToken: rotated.refreshToken,
     };
+  }
+
+  async logout(raw: string | null): Promise<void> {
+    await this.sessions.revokePresented(raw);
+  }
+
+  private async issueSession(user: SessionUser): Promise<IssuedSession> {
+    return {
+      access_token: this.signAccess(user),
+      emailVerified: user.emailVerified === true,
+      refreshToken: await this.sessions.issue(user.id),
+    };
+  }
+
+  private signAccess(user: SessionUser): string {
+    return this.jwtService.sign(
+      {
+        sub: user.id,
+        username: user.username,
+        email: user.email,
+        sv: user.sessionVersion ?? 0,
+      },
+      { expiresIn: '1h' },
+    );
   }
 }
 

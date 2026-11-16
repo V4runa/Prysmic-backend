@@ -31,6 +31,7 @@ import { AuthRateLimiter, type RateLimitBucket } from './rate-limit';
 import { hashPassword } from './password';
 import { assertPasswordAllowed } from './password-policy';
 import { AuthTokenService } from './tokens/auth-token.service';
+import { RefreshSessionService } from './sessions/refresh-session.service';
 
 @Injectable()
 export class AccountLifecycleService {
@@ -43,6 +44,7 @@ export class AccountLifecycleService {
     private readonly email: EmailDelivery,
     private readonly rateLimiter: AuthRateLimiter,
     private readonly dataSource: DataSource,
+    private readonly sessions: RefreshSessionService,
   ) {}
 
   /**
@@ -138,6 +140,7 @@ export class AccountLifecycleService {
         consumedId,
         AUTH_TOKEN_PURPOSE.passwordReset,
       );
+      await this.sessions.revokeAllForUser(consumedId, manager);
     });
   }
 

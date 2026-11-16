@@ -13,6 +13,7 @@ import { Mood } from './modules/moods/mood.entity';
 import { MoodOption } from './modules/moods/mood-option.entity';
 import { CalendarEvent } from './modules/calendar/calendar-event.entity';
 import { AuthToken } from './modules/auth/tokens/auth-token.entity';
+import { RefreshSession } from './modules/auth/sessions/refresh-session.entity';
 import {
   getPostgresConnectionCore,
   type DbEnv,
@@ -35,6 +36,7 @@ export const dataSourceOptions: DataSourceOptions = {
     MoodOption,
     CalendarEvent,
     AuthToken,
+    RefreshSession,
   ],
   migrations: [isCompiled ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
 };

@@ -6,12 +6,13 @@ import {
   HttpCode,
   Post,
   Req,
+  Res,
   UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import type { Request } from 'express';
-import { AuthService } from './auth.service';
+import type { Request, Response } from 'express';
+import { AuthService, type IssuedSession } from './auth.service';
 import {
   ChangePasswordDto,
   EmailRequestDto,
@@ -26,6 +27,11 @@ import { RateLimitFilter } from './rate-limit.filter';
 import { clientIp } from './client-ip';
 import { passwordPolicy, type PasswordPolicy } from './password-policy';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import {
+  clearRefreshCookie,
+  readRefreshCookie,
+  setRefreshCookie,
+} from './sessions/refresh-cookie';
 
 @Controller('auth')
 @UseFilters(RateLimitFilter)
@@ -42,13 +48,49 @@ export class AuthController {
   }
 
   @Post('signup')
-  async signup(@Body() signupDto: SignupDto) {
-    return this.authService.signup(signupDto);
+  async signup(
+    @Body() signupDto: SignupDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.sendSession(res, await this.authService.signup(signupDto));
   }
 
   @Post('login')
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.sendSession(res, await this.authService.login(loginDto));
+  }
+
+  /**
+   * Login itself is not rate-limited. Refresh uses that same posture: the
+   * token is 256 bits of entropy, and a wrong one cannot be guessed.
+   * The client should refresh once when the access token lapses, not on
+   * every request, and must not send two refreshes with the same cookie.
+   * A second use of an already-rotated cookie revokes that session.
+   */
+  @Post('refresh')
+  @HttpCode(200)
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.sendSession(
+      res,
+      await this.authService.refresh(readRefreshCookie(req)),
+    );
+  }
+
+  @Post('logout')
+  @HttpCode(200)
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    try {
+      await this.authService.logout(readRefreshCookie(req));
+    } finally {
+      clearRefreshCookie(res);
+    }
+    return { loggedOut: true };
   }
 
   @Post('email/verify')
@@ -74,8 +116,12 @@ export class AuthController {
 
   @Post('password/reset')
   @HttpCode(200)
-  async resetPassword(@Body() dto: ResetPasswordDto) {
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     await this.lifecycle.resetPassword(dto.token, dto.password);
+    clearRefreshCookie(res);
     return { passwordUpdated: true };
   }
 
@@ -85,12 +131,25 @@ export class AuthController {
   async changePassword(
     @Req() req: Request & { user: { userId: number } },
     @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.authService.changePassword(
-      Number(req.user.userId),
-      dto.currentPassword,
-      dto.newPassword,
-      clientIp(req),
+    return this.sendSession(
+      res,
+      await this.authService.changePassword(
+        Number(req.user.userId),
+        dto.currentPassword,
+        dto.newPassword,
+        clientIp(req),
+      ),
     );
+  }
+
+  /** Puts the refresh token in the cookie and keeps it out of the JSON body. */
+  private sendSession(res: Response, session: IssuedSession) {
+    setRefreshCookie(res, session.refreshToken);
+    return {
+      access_token: session.access_token,
+      emailVerified: session.emailVerified,
+    };
   }
 }

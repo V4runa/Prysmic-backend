@@ -30,6 +30,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { AuthRateLimiter } from './rate-limit';
 import { AuthToken } from './tokens/auth-token.entity';
 import { AuthTokenService } from './tokens/auth-token.service';
+import { RefreshSessionService } from './sessions/refresh-session.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { User } from '../users/user.entity';
 import { UserController } from '../users/user.controller';
@@ -168,6 +169,7 @@ describe('signed-in password change and email change', () => {
   let revoked: Revocation[];
   const mailbox = new RecordingProvider();
   const issue = jest.fn().mockResolvedValue('fresh-verify-token');
+  const revokeAllForUser = jest.fn().mockResolvedValue(undefined);
 
   beforeAll(async () => {
     const memory = createMemory();
@@ -208,6 +210,15 @@ describe('signed-in password change and email change', () => {
         JwtAuthGuard,
         { provide: EMAIL_PROVIDER, useValue: mailbox },
         { provide: AuthTokenService, useValue: { issue } },
+        {
+          provide: RefreshSessionService,
+          useValue: {
+            issue: () => Promise.resolve('refresh-raw'),
+            revokeAllForUser,
+            revokePresented: () => Promise.resolve(),
+            rotate: () => Promise.resolve({ ok: false, reason: 'revoked' }),
+          },
+        },
         { provide: DataSource, useValue: {} },
         {
           provide: OnboardingService,
@@ -331,6 +342,7 @@ describe('signed-in password change and email change', () => {
     expect(oldLogin.status).toBe(401);
     expect(newLogin.status).toBe(201);
     expect(user.sessionVersion).toBe(1);
+    expect(revokeAllForUser).toHaveBeenCalledWith(user.id);
     expect(user.emailVerified).toBe(true);
     expect(await bcrypt.compare('replacement-passphrase', user.password)).toBe(
       true,

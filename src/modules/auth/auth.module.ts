@@ -10,6 +10,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { OnboardingModule } from '../onboarding/onboarding.module';
 import { AuthToken } from './tokens/auth-token.entity';
 import { AuthTokenService } from './tokens/auth-token.service';
+import { RefreshSession } from './sessions/refresh-session.entity';
+import { RefreshSessionService } from './sessions/refresh-session.service';
 import { AccountLifecycleService } from './account-lifecycle.service';
 import { AuthRateLimiter } from './rate-limit';
 import { EmailDelivery } from './email/email.delivery';
@@ -23,7 +25,7 @@ import {
     forwardRef(() => UserModule),
     OnboardingModule,
     PassportModule,
-    TypeOrmModule.forFeature([AuthToken]),
+    TypeOrmModule.forFeature([AuthToken, RefreshSession]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -38,6 +40,7 @@ import {
     AuthService,
     AccountLifecycleService,
     AuthTokenService,
+    RefreshSessionService,
     AuthRateLimiter,
     EmailDelivery,
     JwtStrategy,
