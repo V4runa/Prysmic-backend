@@ -13,6 +13,7 @@ import { OnboardingService } from '../onboarding/onboarding.service';
 import { AccountLifecycleService } from '../auth/account-lifecycle.service';
 import { EMAIL_CHANGE_PASSWORD_REQUIRED } from '../auth/account.constants';
 import { AuthRateLimiter } from '../auth/rate-limit';
+import { RefreshSessionService } from '../auth/sessions/refresh-session.service';
 import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { User } from './user.entity';
 import { UserController } from './user.controller';
@@ -159,6 +160,13 @@ describe('User ownership and password serialization', () => {
           useValue: { manager: {} },
         },
         AuthRateLimiter,
+        {
+          provide: RefreshSessionService,
+          useValue: {
+            issue: () => Promise.resolve('refresh-raw'),
+            revokeAllForUser: () => Promise.resolve(),
+          },
+        },
       ],
     }).compile();
 

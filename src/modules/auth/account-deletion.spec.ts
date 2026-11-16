@@ -67,6 +67,7 @@ describe('account deletion', () => {
       'DELETE FROM "notes"',
       'DELETE FROM "tags"',
       'DELETE FROM "auth_tokens"',
+      'DELETE FROM "refresh_tokens"',
       'DELETE FROM "users"',
     ]) {
       expect(sql).toContain(fragment);
@@ -81,6 +82,9 @@ describe('account deletion', () => {
       sql.indexOf('DELETE FROM "tags"'),
     );
     expect(sql.indexOf('DELETE FROM "auth_tokens"')).toBeLessThan(
+      sql.indexOf('DELETE FROM "users"'),
+    );
+    expect(sql.indexOf('DELETE FROM "refresh_tokens"')).toBeLessThan(
       sql.indexOf('DELETE FROM "users"'),
     );
     expect(provider.sent).toHaveLength(1);
@@ -146,6 +150,7 @@ describe('account deletion', () => {
       delivery(new MemoryProvider(true)),
       { assert: () => undefined } as never,
       { transaction } as never,
+      { revokeAllForUser: () => Promise.resolve() } as never,
     );
 
     await expect(lifecycle.resetPassword('   ', PASSWORD)).rejects.toThrow(
@@ -177,6 +182,7 @@ describe('account deletion', () => {
     const consume = jest.fn().mockResolvedValue(4);
     const replacePasswordHash = jest.fn().mockResolvedValue(true);
     const revokeUnused = jest.fn().mockResolvedValue(undefined);
+    const revokeSessions = jest.fn().mockResolvedValue(undefined);
     const lifecycle = new AccountLifecycleService(
       {
         findById: () =>
@@ -193,11 +199,13 @@ describe('account deletion', () => {
       {
         transaction: (work: (manager: unknown) => Promise<void>) => work({}),
       } as never,
+      { revokeAllForUser: revokeSessions } as never,
     );
 
     await lifecycle.resetPassword('raw-token', PASSWORD);
     expect(consume).toHaveBeenCalledTimes(1);
     expect(revokeUnused).toHaveBeenCalledTimes(1);
+    expect(revokeSessions).toHaveBeenCalledWith(4, {});
     const stored: unknown = (
       replacePasswordHash.mock.calls as unknown[][]
     )[0]?.[2];
@@ -258,6 +266,7 @@ async function harness(
           },
         }),
     } as never,
+    { revokeAllForUser: () => Promise.resolve() } as never,
   );
   return { service, queries, provider, assertLimit: assert };
 }

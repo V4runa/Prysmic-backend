@@ -44,6 +44,7 @@ const OWNED_TABLES = [
   'mood_options',
   'note_attachments',
   'notes',
+  'refresh_tokens',
   'tags',
   'task',
 ];
@@ -657,6 +658,15 @@ async function seedOwned(userId: number, marker: string): Promise<OwnedIds> {
     `INSERT INTO "auth_tokens" ("userId", "purpose", "tokenHash", "expiresAt")
      VALUES ($1, 'email_verification', $2, NOW() + INTERVAL '2 days')`,
     [userId, createHash('sha256').update(marker).digest('hex')],
+  );
+  await admin.query(
+    `INSERT INTO "refresh_tokens" ("userId", "familyId", "tokenHash", "expiresAt")
+     VALUES ($1, $2, $3, NOW() + INTERVAL '30 days')`,
+    [
+      userId,
+      `${marker}-family`,
+      createHash('sha256').update(`refresh-${marker}`).digest('hex'),
+    ],
   );
   return {
     noteId: Number(note[0].id),

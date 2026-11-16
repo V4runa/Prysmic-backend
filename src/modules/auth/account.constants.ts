@@ -4,6 +4,27 @@ export const VERIFICATION_TTL_MS = 48 * 60 * 60 * 1000;
 /** How long a password reset link stays alive. */
 export const RESET_TTL_MS = 60 * 60 * 1000;
 
+/**
+ * Sliding lifetime of a refresh session. Each successful refresh starts this
+ * window over. The access token itself stays at one hour.
+ */
+export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * After a refresh rotates a token, another tab can present that same token
+ * for this long. It receives the session's current cookie instead of being
+ * treated as theft. Reuse after the window revokes the family.
+ */
+export const REFRESH_REUSE_GRACE_SEC = 60;
+
+export const REFRESH_EXPIRED_CODE = 'refresh_expired';
+export const REFRESH_REVOKED_CODE = 'refresh_revoked';
+
+export const REFRESH_EXPIRED = 'This session has expired. Sign in again.';
+
+export const REFRESH_REVOKED =
+  'This session is no longer valid. Sign in again.';
+
 export const AUTH_TOKEN_PURPOSE = {
   emailVerification: 'email_verification',
   passwordReset: 'password_reset',
