@@ -11,6 +11,8 @@ import { EmailDelivery } from './email/email.delivery';
 import { createEmailProvider } from './email/email.provider.factory';
 import { ResendEmailProvider } from './email/resend-email.provider';
 import {
+  renderAccountDeletedEmail,
+  renderPasswordChangedEmail,
   renderPasswordResetEmail,
   renderVerificationEmail,
 } from './email/email.templates';
@@ -162,6 +164,28 @@ describe('account lifecycle units', () => {
     }
     expect(verification.text).toContain('48 hours');
     expect(reset.text).toContain('one hour');
+
+    const invitation = 'Reply to this email anytime. I read every one.';
+    const farewell =
+      'If you did not create an account, let this pass by. Nothing will change.';
+    expect(verification.text.endsWith(invitation)).toBe(true);
+    expect(verification.text.indexOf(farewell)).toBeLessThan(
+      verification.text.indexOf(invitation),
+    );
+    expect(verification.html).toContain(invitation);
+    expect(verification.html.indexOf(farewell)).toBeLessThan(
+      verification.html.indexOf(invitation),
+    );
+    expect(verification.html).not.toContain('<img');
+    expect(verification.html).not.toContain('utm_');
+    for (const letter of [
+      reset,
+      renderPasswordChangedEmail(),
+      renderAccountDeletedEmail(),
+    ]) {
+      expect(letter.text).not.toContain(invitation);
+      expect(letter.html).not.toContain(invitation);
+    }
   });
 
   it('selects Resend in production and the console provider otherwise', () => {
@@ -234,10 +258,12 @@ describe('account lifecycle units', () => {
     const payload = JSON.parse(calls[0].body) as {
       from: string;
       to: string[];
+      reply_to: string;
       text: string;
     };
     expect(payload.from).toBe('Prysmic <notes@prysmic.me>');
     expect(payload.to).toEqual(['user@example.test']);
+    expect(payload.reply_to).toBe('hello@prysmic.me');
     expect(payload.text).toBe('link');
 
     const bare = new ResendEmailProvider(undefined, undefined);
@@ -249,6 +275,142 @@ describe('account lifecycle units', () => {
         text: 'x',
       }),
     ).rejects.toThrow('not configured');
+  });
+
+  it('sets reply_to on every letter and invites a reply only in the welcome email', async () => {
+    const invitation = 'Reply to this email anytime. I read every one.';
+    const letters = [
+      renderVerificationEmail('https://www.prysmic.me/verify-email?token=abc'),
+      renderPasswordResetEmail(
+        'https://www.prysmic.me/reset-password?token=abc',
+      ),
+      renderPasswordChangedEmail(),
+      renderAccountDeletedEmail(),
+    ];
+    const calls: string[] = [];
+    const fetchImpl = (_url: string, init: { body: string }) => {
+      calls.push(init.body);
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(''),
+      });
+    };
+    const provider = new ResendEmailProvider(
+      're_test',
+      'Prysmic <notes@prysmic.me>',
+      fetchImpl,
+    );
+    for (const letter of letters) {
+      await provider.send({ to: 'reader@example.test', ...letter });
+    }
+    expect(calls).toHaveLength(letters.length);
+    const payloads = calls.map((body) => resendPayload(body));
+    expect(payloads.map((letter) => letter.subject)).toEqual(
+      letters.map((letter) => letter.subject),
+    );
+    for (const payload of payloads) {
+      expect(payload.from).toBe('Prysmic <notes@prysmic.me>');
+      expect(payload.reply_to).toBe('hello@prysmic.me');
+      expect(Object.keys(payload).sort()).toEqual([
+        'from',
+        'html',
+        'reply_to',
+        'subject',
+        'text',
+        'to',
+      ]);
+    }
+    expect(payloads[0].text).toContain(invitation);
+    expect(payloads[0].html).toContain(invitation);
+    expect(payloads[0].html).not.toContain('<img');
+    expect(payloads[0].html).not.toContain('utm_');
+    for (const payload of payloads.slice(1)) {
+      expect(payload.text).not.toContain(invitation);
+      expect(payload.html).not.toContain(invitation);
+    }
+
+    calls.length = 0;
+    const custom = new ResendEmailProvider(
+      're_test',
+      'Prysmic <notes@prysmic.me>',
+      fetchImpl,
+      '  inbox@prysmic.me  ',
+    );
+    await custom.send({ to: 'reader@example.test', ...letters[1] });
+    expect(resendPayload(calls[0]).reply_to).toBe('inbox@prysmic.me');
+
+    calls.length = 0;
+    const blank = new ResendEmailProvider(
+      're_test',
+      'Prysmic <notes@prysmic.me>',
+      fetchImpl,
+      '  ',
+    );
+    await blank.send({ to: 'reader@example.test', ...letters[2] });
+    expect(resendPayload(calls[0]).reply_to).toBe('hello@prysmic.me');
+
+    const injected = new ResendEmailProvider(
+      're_test',
+      'Prysmic <notes@prysmic.me>',
+      fetchImpl,
+      'hello@prysmic.me\nBcc: eve@example.test',
+    );
+    await expect(
+      injected.send({ to: 'reader@example.test', ...letters[3] }),
+    ).rejects.toThrow('invalid address');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('reads EMAIL_REPLY_TO when production mail is sent', async () => {
+    const calls: string[] = [];
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(((
+      _url: string,
+      init?: { body?: string },
+    ) => {
+      calls.push(init?.body ?? '');
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(''),
+      });
+    }) as typeof fetch);
+    try {
+      const custom = createEmailProvider(
+        config({
+          NODE_ENV: 'production',
+          RESEND_API_KEY: 're_test',
+          EMAIL_FROM: 'Prysmic <notes@prysmic.me>',
+          EMAIL_REPLY_TO: 'owner@prysmic.me',
+        }),
+      );
+      await custom.send({
+        to: 'reader@example.test',
+        subject: 'Confirm your Prysmic email',
+        html: '<p>hi</p>',
+        text: 'hi',
+      });
+      const omitted = createEmailProvider(
+        config({
+          NODE_ENV: 'production',
+          RESEND_API_KEY: 're_test',
+          EMAIL_FROM: 'Prysmic <notes@prysmic.me>',
+        }),
+      );
+      await omitted.send({
+        to: 'reader@example.test',
+        subject: 'Reset your Prysmic password',
+        html: '<p>hi</p>',
+        text: 'hi',
+      });
+    } finally {
+      fetchMock.mockRestore();
+    }
+    const customPayload = resendPayload(calls[0]);
+    const defaultPayload = resendPayload(calls[1]);
+    expect(customPayload.reply_to).toBe('owner@prysmic.me');
+    expect(customPayload.from).toBe('Prysmic <notes@prysmic.me>');
+    expect(defaultPayload.reply_to).toBe('hello@prysmic.me');
   });
 
   it('refuses to send when production email is not configured', () => {
@@ -354,6 +516,24 @@ function user(
     emailVerified: true,
     sessionVersion: 0,
   } as User;
+}
+
+function resendPayload(body: string): {
+  from: string;
+  to: string[];
+  reply_to: string;
+  subject: string;
+  html: string;
+  text: string;
+} {
+  return JSON.parse(body) as {
+    from: string;
+    to: string[];
+    reply_to: string;
+    subject: string;
+    html: string;
+    text: string;
+  };
 }
 
 function sessionSub(token: string): number {

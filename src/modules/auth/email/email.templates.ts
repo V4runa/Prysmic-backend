@@ -14,6 +14,8 @@ export function resetLink(appUrl: string, token: string): string {
   return actionLink(appUrl, RESET_PASSWORD_PATH, token);
 }
 
+const REPLY_INVITATION = 'Reply to this email anytime. I read every one.';
+
 export function renderVerificationEmail(url: string): RenderedEmail {
   const subject = 'Confirm your Prysmic email';
   const text = [
@@ -27,6 +29,8 @@ export function renderVerificationEmail(url: string): RenderedEmail {
     url,
     '',
     'If you did not create an account, let this pass by. Nothing will change.',
+    '',
+    REPLY_INVITATION,
   ].join('\n');
   const html = layout({
     preheader: 'A quiet confirmation for your journal.',
@@ -39,6 +43,7 @@ export function renderVerificationEmail(url: string): RenderedEmail {
     url,
     footnote:
       'If you did not create an account, let this pass by. Nothing will change.',
+    closing: REPLY_INVITATION,
   });
   return { subject, html, text };
 }
@@ -132,6 +137,7 @@ function layout(input: {
   footnote: string;
   actionLabel?: string;
   url?: string;
+  closing?: string;
 }): string {
   const paragraphs = input.paragraphs
     .map(
@@ -143,6 +149,7 @@ function layout(input: {
     input.url && input.actionLabel
       ? actionRows(input.url, input.actionLabel)
       : '';
+  const closing = input.closing ? `<br><br>${escapeHtml(input.closing)}` : '';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -169,7 +176,7 @@ function layout(input: {
           </tr>
           ${action}
           <tr>
-            <td style="padding-top:32px;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:13px;line-height:1.6;color:#7f7668;">${escapeHtml(input.footnote)}</td>
+            <td style="padding-top:32px;font-family:Georgia,'Iowan Old Style',Palatino,serif;font-size:13px;line-height:1.6;color:#7f7668;">${escapeHtml(input.footnote)}${closing}</td>
           </tr>
         </table>
       </td>
