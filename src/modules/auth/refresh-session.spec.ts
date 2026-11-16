@@ -18,6 +18,7 @@ import { AccountLifecycleService } from './account-lifecycle.service';
 import {
   REFRESH_EXPIRED,
   REFRESH_EXPIRED_CODE,
+  REFRESH_REUSE_GRACE_SEC,
   REFRESH_REVOKED,
   REFRESH_REVOKED_CODE,
 } from './account.constants';
@@ -182,7 +183,7 @@ describe('refresh sessions against disposable Postgres', () => {
     expect(profileAgain.status).toBe(200);
   });
 
-  it('rotates the refresh token and rejects a reused one by revoking the family', async () => {
+  it('rotates the refresh token and keeps the predecessor hash', async () => {
     const first = await signIn('rotate-user', 'rotate@example.test');
     const rotated = await request(server())
       .post('/auth/refresh')
@@ -203,10 +204,87 @@ describe('refresh sessions against disposable Postgres', () => {
     expect(successor?.rotatedAt).toBeNull();
     expect(successor?.familyId).toBe(predecessor?.familyId);
 
-    const again = await request(server())
+    const onward = await request(server())
       .post('/auth/refresh')
       .set('Cookie', next.header);
+    expect(onward.status).toBe(200);
+    expect(refreshCookie(onward).raw).not.toBe(next.raw);
+  });
+
+  it('returns the current cookie when a just-rotated token is presented again', async () => {
+    const first = await signIn('grace-user', 'grace@example.test');
+    const rotated = await request(server())
+      .post('/auth/refresh')
+      .set('Cookie', first.cookie.header);
+    expect(rotated.status).toBe(200);
+    const current = refreshCookie(rotated);
+
+    const concurrent = await request(server())
+      .post('/auth/refresh')
+      .set('Cookie', first.cookie.header);
+    expect(concurrent.status).toBe(200);
+    expect(concurrent.body.access_token).toEqual(expect.any(String));
+    const replayed = refreshCookie(concurrent);
+    expect(replayed.raw).toBe(current.raw);
+    expect(JSON.stringify(concurrent.body)).not.toContain(replayed.raw);
+
+    const again = await request(server())
+      .post('/auth/refresh')
+      .set('Cookie', first.cookie.header);
     expect(again.status).toBe(200);
+    expect(refreshCookie(again).raw).toBe(current.raw);
+
+    const profile = await request(server())
+      .get('/users')
+      .set(auth(concurrent.body.access_token));
+    expect(profile.status).toBe(200);
+
+    const rows = await familyRows(first.userId);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.revokedAt === null)).toBe(true);
+    const active = rows.filter((row) => row.rotatedAt === null);
+    expect(active).toHaveLength(1);
+    expect(active[0].tokenHash).toBe(hashToken(current.raw));
+
+    const seals = await admin.query(
+      `SELECT "successorSeal" FROM "refresh_tokens"
+       WHERE "userId" = $1 AND "rotatedAt" IS NOT NULL`,
+      [first.userId],
+    );
+    expect(seals).toHaveLength(1);
+    expect(seals[0].successorSeal).toEqual(expect.any(String));
+    expect(seals[0].successorSeal).not.toContain(current.raw);
+    expect(seals[0].successorSeal).not.toContain(first.cookie.raw);
+
+    const kept = await request(server())
+      .post('/auth/refresh')
+      .set('Cookie', current.header);
+    expect(kept.status).toBe(200);
+    const latest = refreshCookie(kept);
+
+    const caughtUp = await request(server())
+      .post('/auth/refresh')
+      .set('Cookie', first.cookie.header);
+    expect(caughtUp.status).toBe(200);
+    expect(refreshCookie(caughtUp).raw).toBe(latest.raw);
+    const still = await familyRows(first.userId);
+    expect(still.every((row) => row.revokedAt === null)).toBe(true);
+    expect(still.filter((row) => row.rotatedAt === null)).toHaveLength(1);
+  });
+
+  it('revokes the family when a rotated token is reused after the grace window', async () => {
+    const first = await signIn('late-user', 'late@example.test');
+    const rotated = await request(server())
+      .post('/auth/refresh')
+      .set('Cookie', first.cookie.header);
+    expect(rotated.status).toBe(200);
+    const current = refreshCookie(rotated);
+    await admin.query(
+      `UPDATE "refresh_tokens"
+       SET "rotatedAt" = NOW() - (($1::int + 30) * INTERVAL '1 second')
+       WHERE "tokenHash" = $2`,
+      [REFRESH_REUSE_GRACE_SEC, hashToken(first.cookie.raw)],
+    );
 
     const reused = await request(server())
       .post('/auth/refresh')
@@ -218,13 +296,13 @@ describe('refresh sessions against disposable Postgres', () => {
       message: REFRESH_REVOKED,
     });
 
-    const after = await familyRows(first.userId);
-    expect(after.length).toBeGreaterThanOrEqual(2);
-    expect(after.every((row) => row.revokedAt)).toBe(true);
+    const rows = await familyRows(first.userId);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows.every((row) => row.revokedAt)).toBe(true);
 
     const killed = await request(server())
       .post('/auth/refresh')
-      .set('Cookie', refreshCookie(again).header);
+      .set('Cookie', current.header);
     expect(killed.status).toBe(401);
     expect(killed.body.code).toBe(REFRESH_REVOKED_CODE);
   });

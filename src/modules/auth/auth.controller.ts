@@ -66,9 +66,9 @@ export class AuthController {
   /**
    * Login itself is not rate-limited. Refresh uses that same posture: the
    * token is 256 bits of entropy, and a wrong one cannot be guessed.
-   * The client should refresh once when the access token lapses, not on
-   * every request, and must not send two refreshes with the same cookie.
-   * A second use of an already-rotated cookie revokes that session.
+   * Refresh when the access token lapses. Two tabs may present the cookie
+   * that was just rotated; for 60 seconds that is a concurrent refresh and
+   * returns the session's current cookie. Reuse after that revokes the family.
    */
   @Post('refresh')
   @HttpCode(200)

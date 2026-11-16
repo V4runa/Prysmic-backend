@@ -1,8 +1,10 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Server-side refresh sessions. The raw token is never stored — only its
- * SHA-256 — and deleting the user removes every session.
+ * Server-side refresh sessions. The lookup value is a SHA-256. A rotated row
+ * also keeps an encrypted copy of its successor for the short reuse-grace
+ * window, so two tabs can refresh together. Deleting the user removes every
+ * session.
  */
 export class AddRefreshSessions1791000000000 implements MigrationInterface {
   name = 'AddRefreshSessions1791000000000';
@@ -17,6 +19,7 @@ export class AddRefreshSessions1791000000000 implements MigrationInterface {
         "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL,
         "rotatedAt" TIMESTAMP WITH TIME ZONE,
         "revokedAt" TIMESTAMP WITH TIME ZONE,
+        "successorSeal" text,
         "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         CONSTRAINT "PK_refresh_tokens" PRIMARY KEY ("id"),
         CONSTRAINT "UQ_refresh_tokens_tokenHash" UNIQUE ("tokenHash"),

@@ -9,9 +9,10 @@ import type { RefreshFailure } from './refresh-session.service';
 
 /**
  * `code` is the stable value the client branches on.
- * Reuse, logout, password change, deletion, and an unknown token all use
- * refresh_revoked. Only a token that aged out without being rotated uses
- * refresh_expired.
+ * Logout, password change, deletion, an unknown token, and reuse of a
+ * rotated token after the grace window all use refresh_revoked. A token
+ * that aged out without being rotated uses refresh_expired. Presenting the
+ * token that was just rotated, inside the grace window, is a success.
  */
 export function refreshDenied(reason: RefreshFailure): UnauthorizedException {
   if (reason === 'expired') {

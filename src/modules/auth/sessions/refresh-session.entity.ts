@@ -9,8 +9,9 @@ import {
 /**
  * One link in a refresh-token family. A login starts a family. Each refresh
  * marks the presented row rotated and inserts the successor in the same family.
- * Reuse of a rotated row revokes the family. Only the SHA-256 of the raw
- * token is stored.
+ * For a short grace window the rotated row also holds a sealed copy of that
+ * successor, so a concurrent refresh can be given the current cookie. Reuse
+ * after the window revokes the family.
  */
 @Entity('refresh_tokens')
 @Index('IDX_refresh_tokens_userId', ['userId'])
@@ -25,9 +26,16 @@ export class RefreshSession {
   @Column({ type: 'varchar', length: 36 })
   familyId: string;
 
-  /** SHA-256 hex of the raw token. The raw token is never stored. */
+  /** SHA-256 hex of the raw token. */
   @Column({ type: 'varchar', length: 64, unique: true })
   tokenHash: string;
+
+  /**
+   * AES-GCM seal of the successor raw token. Set when this row is rotated
+   * and cleared once the reuse grace window has passed.
+   */
+  @Column({ type: 'text', nullable: true })
+  successorSeal: string | null;
 
   @Column({ type: 'timestamptz' })
   expiresAt: Date;
