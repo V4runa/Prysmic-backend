@@ -13,9 +13,12 @@ export const EMAIL_PROVIDER = Symbol('EMAIL_PROVIDER');
 export function createEmailProvider(config: ConfigService): EmailProvider {
   const nodeEnv = config.get<string>('NODE_ENV');
   if (nodeEnv === 'production') {
+    // Third argument is fetch. Production keeps the platform fetch.
     const provider = new ResendEmailProvider(
       config.get<string>('RESEND_API_KEY'),
       config.get<string>('EMAIL_FROM'),
+      undefined,
+      config.get<string>('EMAIL_REPLY_TO'),
     );
     if (!provider.isConfigured() || !config.get<string>('APP_URL')?.trim()) {
       Logger.warn(
