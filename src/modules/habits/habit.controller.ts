@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
 import { UpdateHabitDto } from '../../dtos/update-habit.dto';
 import { CheckHabitDto } from '../../dtos/check-habit.dto';
+import { QueryHabitCheckinsDto } from '../../dtos/query-habit-checkins.dto';
 
 @Controller('habits')
 @UseGuards(JwtAuthGuard)
@@ -39,6 +40,20 @@ export class HabitController {
     @Query('today') today?: string,
   ) {
     return this.habitService.getHabitById(id, req.user.userId, today);
+  }
+
+  @Get(':id/checkins')
+  getCheckins(
+    @Request() req: { user: { userId: number } },
+    @Param('id', ParseEntityIdPipe) id: number,
+    @Query() query: QueryHabitCheckinsDto,
+  ) {
+    return this.habitService.getCheckins(
+      id,
+      req.user.userId,
+      query.from,
+      query.to,
+    );
   }
 
   @Put(':id')
