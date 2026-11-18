@@ -241,11 +241,16 @@ function createMemory() {
       return copyTask(stored);
     },
     async findOne(options?: {
-      where?: { id?: unknown };
+      where?: { id?: unknown; userId?: unknown };
       relations?: string[];
     }): Promise<StoredTask | null> {
-      const id = asNumber(options?.where?.id);
-      const found = tasks.find((row) => row.id === id);
+      const where = options?.where ?? {};
+      const id = asNumber(where.id);
+      const userId = 'userId' in where ? asNumber(where.userId) : undefined;
+      const found = tasks.find(
+        (row) =>
+          row.id === id && (userId === undefined || row.userId === userId),
+      );
       return found ? copyTask(found) : null;
     },
     async remove(task: StoredTask): Promise<void> {
@@ -699,6 +704,14 @@ describe('Task and tag sharing (controller + service)', () => {
       'Validation failed (numeric string is expected)',
     );
 
+    const overflow = await request(server())
+      .get('/tasks?tagId=2147483648')
+      .set(auth(tokenA));
+    expect(overflow.status).toBe(400);
+    expect(overflow.body.message).toBe(
+      'Validation failed (numeric string is expected)',
+    );
+
     const archived = await request(server())
       .get(`/tasks?archived=true&tagId=${TAG_WORK_ID}`)
       .set(auth(tokenA));
@@ -706,10 +719,15 @@ describe('Task and tag sharing (controller + service)', () => {
       'archived task',
     ]);
 
+    const missingTask = await request(server())
+      .get('/tasks/999999')
+      .set(auth(tokenA));
     const hidden = await request(server())
       .get(`/tasks/${TASK_SECRET_ID}`)
       .set(auth(tokenA));
-    expect(hidden.status).toBe(403);
+    expect(hidden.status).toBe(404);
+    expect(hidden.body).toEqual(missingTask.body);
+    expect(hidden.body.message).toBe('Task not found');
     expect(JSON.stringify(hidden.body)).not.toContain('beta-secret-task');
 
     const asOwnerB = await request(server()).get('/tasks').set(auth(tokenB));
@@ -816,5 +834,37 @@ describe('Task and tag sharing (controller + service)', () => {
     expect(
       after.body.some((tag: { id: number }) => tag.id === TAG_FREE_ID),
     ).toBe(false);
+  });
+
+  it('answers a malformed tag id with 404, and hides another user the same way as a missing tag', async () => {
+    for (const [method, url] of [
+      ['get', '/tags/abc'],
+      ['get', '/tags/1.5'],
+      ['get', '/tags/2147483648'],
+      ['put', '/tags/xyz'],
+      ['delete', '/tags/xyz'],
+    ] as const) {
+      const response = await request(server())
+        [method](url)
+        .set(auth(tokenA))
+        .send(method === 'put' ? { name: 'nope', color: 'cyan' } : undefined);
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({
+        statusCode: 404,
+        message: 'Not found',
+        error: 'Not Found',
+      });
+    }
+
+    const missing = await request(server())
+      .get('/tags/999999')
+      .set(auth(tokenA));
+    const foreign = await request(server())
+      .get(`/tags/${TAG_SECRET_ID}`)
+      .set(auth(tokenA));
+    expect(foreign.status).toBe(404);
+    expect(foreign.body).toEqual(missing.body);
+    expect(foreign.body.message).toBe('Tag not found');
+    expect(JSON.stringify(foreign.body)).not.toContain('beta-secret');
   });
 });

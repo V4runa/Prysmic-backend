@@ -172,10 +172,15 @@ function createMemory() {
       return copyTask(stored);
     },
     async findOne(options?: {
-      where?: { id?: unknown };
+      where?: { id?: unknown; userId?: unknown };
     }): Promise<StoredTask | null> {
-      const id = asNumber(options?.where?.id);
-      const found = tasks.find((row) => row.id === id);
+      const where = options?.where ?? {};
+      const id = asNumber(where.id);
+      const userId = 'userId' in where ? asNumber(where.userId) : undefined;
+      const found = tasks.find(
+        (row) =>
+          row.id === id && (userId === undefined || row.userId === userId),
+      );
       return found ? copyTask(found) : null;
     },
     createQueryBuilder() {
@@ -358,12 +363,37 @@ describe('Task origin note (controller + service)', () => {
     expect(explicitNull.body.originNoteId).toBeNull();
     expect(explicitNull.body.originNote).toBeNull();
 
+    const missing = await request(server())
+      .get('/tasks/999999')
+      .set(auth(tokenA));
     const asOther = await request(server())
       .get(`/tasks/${taskId}`)
       .set(auth(tokenB));
-    expect(asOther.status).toBe(403);
+    expect(asOther.status).toBe(404);
+    expect(asOther.body).toEqual(missing.body);
+    expect(asOther.body).toEqual({
+      statusCode: 404,
+      message: 'Task not found',
+      error: 'Not Found',
+    });
     expect(JSON.stringify(asOther.body)).not.toContain(TITLE_A);
     expect(JSON.stringify(asOther.body)).not.toContain(BODY_A);
+
+    const foreignUpdate = await request(server())
+      .patch(`/tasks/${taskId}`)
+      .set(auth(tokenB))
+      .send({ title: 'stolen-title' });
+    const missingUpdate = await request(server())
+      .patch('/tasks/999998')
+      .set(auth(tokenB))
+      .send({ title: 'stolen-title' });
+    expect(foreignUpdate.status).toBe(404);
+    expect(foreignUpdate.body).toEqual(missingUpdate.body);
+    const still = await request(server())
+      .get(`/tasks/${taskId}`)
+      .set(auth(tokenA));
+    expect(still.status).toBe(200);
+    expect(still.body.title).not.toBe('stolen-title');
   });
 
   it("rejects a missing origin note and someone else's note the same way", async () => {
@@ -448,6 +478,33 @@ describe('Task origin note (controller + service)', () => {
       expect(JSON.stringify(one.body)).not.toContain(BODY_A);
     } finally {
       memory.notes.push(removed);
+    }
+  });
+
+  it('answers a malformed task id with 404', async () => {
+    const cases = [
+      ['get', '/tasks/abc'],
+      ['get', '/tasks/all'],
+      ['get', '/tasks/1.5'],
+      ['get', '/tasks/2147483648'],
+      ['patch', '/tasks/xyz'],
+      ['delete', '/tasks/xyz'],
+      ['post', '/tasks/abc/archive'],
+      ['post', '/tasks/abc/unarchive'],
+      ['post', '/tasks/abc/complete'],
+      ['post', '/tasks/abc/uncomplete'],
+    ] as const;
+    for (const [method, url] of cases) {
+      const response = await request(server())
+        [method](url)
+        .set(auth(tokenA))
+        .send(method === 'patch' ? { title: 'nope' } : undefined);
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({
+        statusCode: 404,
+        message: 'Not found',
+        error: 'Not Found',
+      });
     }
   });
 });

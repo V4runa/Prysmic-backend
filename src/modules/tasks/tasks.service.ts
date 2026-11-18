@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Task } from './tasks.entity';
@@ -161,13 +157,15 @@ export class TaskService {
     return this.withOrigin(userId, await this.taskRepo.save(task));
   }
 
+  // A missing id and someone else's id both 404 with the same message. The
+  // query itself is scoped to the owner, so the response cannot reveal that
+  // the other task exists.
   private async loadOwned(userId: number, id: number): Promise<Task> {
     const task = await this.taskRepo.findOne({
-      where: { id },
+      where: { id, userId },
       relations: ['tags'],
     });
     if (!task) throw new NotFoundException('Task not found');
-    if (task.userId !== userId) throw new ForbiddenException();
     return task;
   }
 

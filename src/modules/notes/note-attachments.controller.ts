@@ -9,12 +9,12 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
-  ParseIntPipe,
   StreamableFile,
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
+import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { NoteAttachmentsService } from './note-attachments.service';
 import { MAX_ATTACHMENT_BYTES } from './note-attachments.constants';
@@ -26,7 +26,7 @@ export class NoteAttachmentsController {
 
   @Get()
   async list(
-    @Param('noteId', ParseIntPipe) noteId: number,
+    @Param('noteId', ParseEntityIdPipe) noteId: number,
     @Req() req: any,
   ) {
     return this.attachmentsService.list(noteId, req.user.userId);
@@ -37,7 +37,7 @@ export class NoteAttachmentsController {
     FileInterceptor('file', { limits: { fileSize: MAX_ATTACHMENT_BYTES } }),
   )
   async upload(
-    @Param('noteId', ParseIntPipe) noteId: number,
+    @Param('noteId', ParseEntityIdPipe) noteId: number,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: any,
   ) {
@@ -47,8 +47,8 @@ export class NoteAttachmentsController {
 
   @Get(':attachmentId/raw')
   async raw(
-    @Param('noteId', ParseIntPipe) noteId: number,
-    @Param('attachmentId', ParseIntPipe) attachmentId: number,
+    @Param('noteId', ParseEntityIdPipe) noteId: number,
+    @Param('attachmentId', ParseEntityIdPipe) attachmentId: number,
     @Req() req: any,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
@@ -70,8 +70,8 @@ export class NoteAttachmentsController {
 
   @Delete(':attachmentId')
   async remove(
-    @Param('noteId', ParseIntPipe) noteId: number,
-    @Param('attachmentId', ParseIntPipe) attachmentId: number,
+    @Param('noteId', ParseEntityIdPipe) noteId: number,
+    @Param('attachmentId', ParseEntityIdPipe) attachmentId: number,
     @Req() req: any,
   ) {
     await this.attachmentsService.remove(noteId, attachmentId, req.user.userId);

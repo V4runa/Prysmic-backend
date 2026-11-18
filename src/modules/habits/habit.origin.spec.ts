@@ -342,12 +342,35 @@ describe('Habit origin note (controller + service)', () => {
     expect(plain.body.originNoteId).toBeNull();
     expect(plain.body.originNote).toBeNull();
 
+    const missing = await request(server())
+      .get('/habits/999999')
+      .set(auth(tokenA));
     const asOther = await request(server())
       .get(`/habits/${habitId}`)
       .set(auth(tokenB));
     expect(asOther.status).toBe(404);
+    expect(asOther.body).toEqual(missing.body);
+    expect(asOther.body.message).toBe(
+      'Habit not found or you do not have access.',
+    );
     expect(JSON.stringify(asOther.body)).not.toContain(TITLE_A);
     expect(JSON.stringify(asOther.body)).not.toContain(BODY_A);
+    expect(JSON.stringify(asOther.body)).not.toContain('from-alpha');
+
+    const foreignUpdate = await request(server())
+      .put(`/habits/${habitId}`)
+      .set(auth(tokenB))
+      .send({ name: 'stolen-habit' });
+    const missingUpdate = await request(server())
+      .put('/habits/999998')
+      .set(auth(tokenB))
+      .send({ name: 'stolen-habit' });
+    expect(foreignUpdate.status).toBe(404);
+    expect(foreignUpdate.body).toEqual(missingUpdate.body);
+    const still = await request(server())
+      .get(`/habits/${habitId}`)
+      .set(auth(tokenA));
+    expect(still.body.name).toBe('from-alpha');
   });
 
   it("rejects a missing origin note and someone else's note the same way", async () => {
@@ -393,5 +416,35 @@ describe('Habit origin note (controller + service)', () => {
     expect(JSON.stringify(one.body)).not.toContain(BODY_A);
 
     memory.notes.push(removed);
+  });
+
+  it('answers a malformed habit id with 404', async () => {
+    const cases = [
+      ['get', '/habits/xyz'],
+      ['get', '/habits/all'],
+      ['get', '/habits/1.5'],
+      ['get', '/habits/2147483648'],
+      ['put', '/habits/abc'],
+      ['delete', '/habits/abc'],
+      ['post', '/habits/abc/check'],
+    ] as const;
+    for (const [method, url] of cases) {
+      const response = await request(server())
+        [method](url)
+        .set(auth(tokenA))
+        .send(
+          method === 'put'
+            ? { name: 'nope' }
+            : method === 'post'
+              ? { date: '2026-05-01' }
+              : undefined,
+        );
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({
+        statusCode: 404,
+        message: 'Not found',
+        error: 'Not Found',
+      });
+    }
   });
 });

@@ -10,6 +10,7 @@ import {
   BadRequestException,
   Put,
 } from "@nestjs/common";
+import { ParseEntityIdPipe } from "../../common/parse-entity-id.pipe";
 import { TagsService } from "./tags.service";
 import { Tag } from "./tags.entity";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -45,7 +46,7 @@ export class TagsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async getTagById(
-    @Param('id') id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Req() req: Request
   ): Promise<Tag> {
     const userId = (req.user as any)?.userId;
@@ -57,7 +58,7 @@ export class TagsController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   async deleteTag(
-    @Param('id') id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Req() req: Request
   ): Promise<void> {
     const userId = (req.user as any)?.userId;
@@ -68,7 +69,7 @@ export class TagsController {
   @Put(':id')
 @UseGuards(JwtAuthGuard)
 async updateTag(
-  @Param('id') id: number,
+  @Param('id', ParseEntityIdPipe) id: number,
   @Body('name') name: string,
   @Body('color') color: string,
   @Req() req: Request
