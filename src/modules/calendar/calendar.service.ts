@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Repository } from 'typeorm';
 import { CalendarEvent } from './calendar-event.entity';
@@ -121,12 +117,12 @@ export class CalendarService {
     return this.eventRepo.save(event);
   }
 
+  // A missing id and someone else's id both 404 with the same message. The
+  // query itself is scoped to the owner, so the response cannot reveal that
+  // the other event exists.
   async getEvent(id: number, userId: number) {
-    const event = await this.eventRepo.findOne({ where: { id } });
+    const event = await this.eventRepo.findOne({ where: { id, userId } });
     if (!event) throw new NotFoundException('Event not found');
-    if (event.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this event');
-    }
     return event;
   }
 

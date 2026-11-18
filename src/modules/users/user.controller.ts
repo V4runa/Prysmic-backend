@@ -11,12 +11,12 @@ import {
   UseInterceptors,
   UseFilters,
   NotFoundException,
-  ParseIntPipe,
   ClassSerializerInterceptor,
   HttpCode,
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DeleteAccountDto, UpdateUserDto } from '../../dtos/user';
 import { UserService, toPublicUser, PublicUser } from './user.service';
@@ -76,7 +76,7 @@ export class UserController {
   @Get(':id')
   async findById(
     @Req() req: AuthenticatedRequest,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
   ): Promise<PublicUser> {
     this.assertSelf(req.user.userId, id);
     const user = await this.loadSelf(req.user.userId);
@@ -87,7 +87,7 @@ export class UserController {
   @UseFilters(RateLimitFilter)
   async update(
     @Req() req: AuthenticatedRequest,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Body() dto: UpdateUserDto,
   ): Promise<PublicUser> {
     this.assertSelf(req.user.userId, id);

@@ -9,8 +9,8 @@ import {
   Query,
   UseGuards,
   Request,
-  ParseIntPipe,
 } from '@nestjs/common';
+import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { HabitService } from './habit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
@@ -35,26 +35,30 @@ export class HabitController {
   @Get(':id')
   getOne(
     @Request() req,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Query('today') today?: string,
   ) {
     return this.habitService.getHabitById(id, req.user.userId, today);
   }
 
   @Put(':id')
-  update(@Request() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateHabitDto) {
+  update(
+    @Request() req,
+    @Param('id', ParseEntityIdPipe) id: number,
+    @Body() dto: UpdateHabitDto,
+  ) {
     return this.habitService.updateHabit(id, req.user.userId, dto);
   }
 
   @Delete(':id')
-  delete(@Request() req, @Param('id', ParseIntPipe) id: number) {
+  delete(@Request() req, @Param('id', ParseEntityIdPipe) id: number) {
     return this.habitService.deleteHabit(id, req.user.userId);
   }
 
   @Post(':id/check')
   toggleCheck(
     @Request() req,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Body() dto: CheckHabitDto,
   ) {
     return this.habitService.toggleCheck(id, req.user.userId, dto.date);

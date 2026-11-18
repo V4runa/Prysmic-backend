@@ -154,10 +154,15 @@ function createMemory() {
       return event;
     },
     async findOne(options?: {
-      where?: { id?: unknown };
+      where?: { id?: unknown; userId?: unknown };
     }): Promise<StoredEvent | null> {
-      const id = asNumber(options?.where?.id);
-      const found = events.find((event) => event.id === id);
+      const where = options?.where ?? {};
+      const id = asNumber(where.id);
+      const userId = 'userId' in where ? asNumber(where.userId) : undefined;
+      const found = events.find(
+        (event) =>
+          event.id === id && (userId === undefined || event.userId === userId),
+      );
       return found ? { ...found } : null;
     },
     createQueryBuilder() {
@@ -190,6 +195,7 @@ function createMemory() {
 describe('Calendar link ownership (controller + service)', () => {
   let app: INestApplication;
   let tokenA: string;
+  let tokenB: string;
 
   beforeAll(async () => {
     const memory = createMemory();
@@ -251,6 +257,11 @@ describe('Calendar link ownership (controller + service)', () => {
       username: 'synth-owner-a',
       email: 'synth-a@example.test',
     });
+    tokenB = jwt.sign({
+      sub: USER_B_ID,
+      username: 'synth-owner-b',
+      email: 'synth-b@example.test',
+    });
   });
 
   afterAll(async () => {
@@ -259,8 +270,8 @@ describe('Calendar link ownership (controller + service)', () => {
 
   const server = () => app.getHttpServer();
 
-  function auth() {
-    return { Authorization: `Bearer ${tokenA}` };
+  function auth(token = tokenA) {
+    return { Authorization: `Bearer ${token}` };
   }
 
   async function createLinked(linkedType: string, linkedId: number) {
@@ -354,5 +365,72 @@ describe('Calendar link ownership (controller + service)', () => {
     expect(cleared.status).toBe(200);
     expect(cleared.body.linkedType).toBeNull();
     expect(cleared.body.linkedId).toBeNull();
+  });
+
+  it('gives another user the same 404 as a missing event', async () => {
+    const created = await request(server())
+      .post('/calendar/events')
+      .set(auth())
+      .send({
+        title: 'alpha-private-event',
+        startDate: '2026-06-01',
+        allDay: true,
+      });
+    expect(created.status).toBe(201);
+    const id = created.body.id as number;
+
+    const missing = await request(server())
+      .get('/calendar/events/999999')
+      .set(auth(tokenB));
+    const foreign = await request(server())
+      .get(`/calendar/events/${id}`)
+      .set(auth(tokenB));
+    expect(foreign.status).toBe(404);
+    expect(foreign.body).toEqual(missing.body);
+    expect(foreign.body).toEqual({
+      statusCode: 404,
+      message: 'Event not found',
+      error: 'Not Found',
+    });
+    expect(JSON.stringify(foreign.body)).not.toContain('alpha-private-event');
+
+    const foreignUpdate = await request(server())
+      .patch(`/calendar/events/${id}`)
+      .set(auth(tokenB))
+      .send({ title: 'stolen-event' });
+    const missingUpdate = await request(server())
+      .patch('/calendar/events/999998')
+      .set(auth(tokenB))
+      .send({ title: 'stolen-event' });
+    expect(foreignUpdate.status).toBe(404);
+    expect(foreignUpdate.body).toEqual(missingUpdate.body);
+
+    const still = await request(server())
+      .get(`/calendar/events/${id}`)
+      .set(auth());
+    expect(still.status).toBe(200);
+    expect(still.body.title).toBe('alpha-private-event');
+  });
+
+  it('answers a malformed event id with 404', async () => {
+    const cases = [
+      ['get', '/calendar/events/xyz'],
+      ['get', '/calendar/events/1.5'],
+      ['get', '/calendar/events/2147483648'],
+      ['patch', '/calendar/events/abc'],
+      ['delete', '/calendar/events/abc'],
+    ] as const;
+    for (const [method, url] of cases) {
+      const response = await request(server())
+        [method](url)
+        .set(auth())
+        .send(method === 'patch' ? { title: 'nope' } : undefined);
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({
+        statusCode: 404,
+        message: 'Not found',
+        error: 'Not Found',
+      });
+    }
   });
 });

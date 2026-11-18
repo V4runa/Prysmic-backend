@@ -10,8 +10,8 @@ import {
   Param,
   Req,
   UseGuards,
-  ParseIntPipe,
 } from '@nestjs/common';
+import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MoodOptionService } from './mood-option.service';
@@ -38,7 +38,7 @@ export class MoodOptionController {
   @Put(':id')
   update(
     @Req() req: Request,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Body() dto: UpdateMoodOptionDto,
   ) {
     const userId = (req.user as { userId: number }).userId;
@@ -46,7 +46,7 @@ export class MoodOptionController {
   }
 
   @Delete(':id')
-  remove(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+  remove(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.moodOptionService.remove(userId, id);
   }

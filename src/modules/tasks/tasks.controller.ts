@@ -10,10 +10,13 @@ import {
   Query,
   UseGuards,
   Req,
-  ParseIntPipe,
   ParseBoolPipe,
   DefaultValuePipe,
 } from '@nestjs/common';
+import {
+  ParseEntityIdPipe,
+  ParseOptionalEntityIdPipe,
+} from '../../common/parse-entity-id.pipe';
 import { TaskService } from './tasks.service';
 import { CreateTaskDto } from '../../dtos/create-task.dto';
 import { UpdateTaskDto } from '../../dtos/update-task.dto';
@@ -49,7 +52,7 @@ export class TaskController {
     @Query('search') search: string,
     @Query('limit') limit?: number,
     @Query('offset') offset?: number,
-    @Query('tagId', new ParseIntPipe({ optional: true })) tagId?: number,
+    @Query('tagId', ParseOptionalEntityIdPipe) tagId?: number,
   ) {
     const userId = (req.user as { userId: number }).userId;
     return this.taskService.findAll(userId, {
@@ -66,7 +69,7 @@ export class TaskController {
   }
 
   @Get(':id')
-  findOne(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+  findOne(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.taskService.findOne(userId, id);
   }
@@ -74,7 +77,7 @@ export class TaskController {
   @Patch(':id')
   async update(
     @Req() req: Request,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Body() dto: UpdateTaskDto,
   ) {
     const userId = (req.user as { userId: number }).userId;
@@ -87,31 +90,31 @@ export class TaskController {
   }
 
   @Delete(':id')
-  remove(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+  remove(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.taskService.remove(userId, id);
   }
 
   @Post(':id/archive')
-  archive(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+  archive(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.taskService.archive(userId, id);
   }
 
   @Post(':id/unarchive')
-  unarchive(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+  unarchive(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.taskService.unarchive(userId, id);
   }
 
   @Post(':id/complete')
-  complete(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+  complete(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.taskService.markComplete(userId, id);
   }
 
   @Post(':id/uncomplete')
-  uncomplete(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
+  uncomplete(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.taskService.markIncomplete(userId, id);
   }

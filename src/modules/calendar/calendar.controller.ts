@@ -4,13 +4,13 @@ import {
   Delete,
   Get,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { CalendarService } from './calendar.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateCalendarEventDto } from '../../dtos/create-calendar-event.dto';
@@ -34,21 +34,21 @@ export class CalendarController {
   }
 
   @Get('events/:id')
-  getEvent(@Request() req, @Param('id', ParseIntPipe) id: number) {
+  getEvent(@Request() req, @Param('id', ParseEntityIdPipe) id: number) {
     return this.calendarService.getEvent(id, req.user.userId);
   }
 
   @Patch('events/:id')
   updateEvent(
     @Request() req,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Body() dto: UpdateCalendarEventDto,
   ) {
     return this.calendarService.updateEvent(id, req.user.userId, dto);
   }
 
   @Delete('events/:id')
-  deleteEvent(@Request() req, @Param('id', ParseIntPipe) id: number) {
+  deleteEvent(@Request() req, @Param('id', ParseEntityIdPipe) id: number) {
     return this.calendarService.deleteEvent(id, req.user.userId);
   }
 }

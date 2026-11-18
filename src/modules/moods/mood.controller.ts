@@ -12,6 +12,7 @@ import {
   Delete,
   Param,
 } from '@nestjs/common';
+import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MoodService } from './mood.service';
@@ -70,7 +71,7 @@ export class MoodController {
    * Delete a mood by ID
    */
   @Delete(':id')
-  deleteOne(@Req() req: Request, @Param('id') id: number) {
+  deleteOne(@Req() req: Request, @Param('id', ParseEntityIdPipe) id: number) {
     const userId = (req.user as { userId: number }).userId;
     return this.moodService.deleteById(userId, id);
   }

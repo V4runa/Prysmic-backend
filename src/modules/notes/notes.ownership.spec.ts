@@ -890,6 +890,40 @@ describe('Note ownership (controller + service)', () => {
     expect(afterAttack.body.title).toBe('keep-me');
   });
 
+  it('answers a malformed note, user, or attachment id with 404', async () => {
+    const cases = [
+      ['get', '/notes/all'],
+      ['get', '/notes/abc'],
+      ['get', '/notes/1.5'],
+      ['get', '/notes/2147483648'],
+      ['put', '/notes/xyz'],
+      ['delete', '/notes/xyz'],
+      ['get', '/notes/user/all'],
+      ['get', '/notes/user/abc'],
+      ['get', '/notes/abc/attachments'],
+      ['post', '/notes/abc/attachments'],
+      ['get', `/notes/${NOTE_A_ID}/attachments/abc/raw`],
+      ['delete', `/notes/${NOTE_A_ID}/attachments/xyz`],
+      ['get', '/notes/2147483648/attachments'],
+    ] as const;
+    for (const [method, url] of cases) {
+      const response = await request(server())
+        [method](url)
+        .set(auth(tokenA))
+        .send(method === 'put' ? { title: 'nope' } : undefined);
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({
+        statusCode: 404,
+        message: 'Not found',
+        error: 'Not Found',
+      });
+      expect(JSON.stringify(response.body)).not.toContain(TITLE_A);
+      expect(JSON.stringify(response.body)).not.toContain(TITLE_B);
+      expect(JSON.stringify(response.body)).not.toContain(BODY_A);
+      expect(JSON.stringify(response.body)).not.toContain(BODY_B);
+    }
+  });
+
   it('does not list another user notes when the path user id is not the token subject', async () => {
     const foreignList = await request(server())
       .get(`/notes/user/${USER_B_ID}`)

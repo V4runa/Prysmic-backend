@@ -12,7 +12,6 @@ import {
   Req,
   BadRequestException,
   NotFoundException,
-  ParseIntPipe,
   ParseBoolPipe,
   DefaultValuePipe,
   ClassSerializerInterceptor,
@@ -21,6 +20,7 @@ import { NotesService } from './notes.service';
 import { Note } from './notes.entity';
 import { TagsService } from '../tags/tags.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { CreateNoteDto } from '../../dtos/create-note.dto';
 import { UpdateNoteDto } from '../../dtos/update-note.dto';
 
@@ -62,7 +62,7 @@ export class NotesController {
   @UseGuards(JwtAuthGuard)
   async getNotesByUser(
     @Req() req: AuthenticatedRequest,
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userId', ParseEntityIdPipe) userId: number,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('archived', new DefaultValuePipe(false), ParseBoolPipe)
@@ -84,7 +84,7 @@ export class NotesController {
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async getNoteById(
-    @Param('id') id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Req() req: AuthenticatedRequest,
   ): Promise<Note> {
     return this.notesService.getNoteById(id, req.user.userId);
@@ -98,7 +98,7 @@ export class NotesController {
   @Put(':id')
   @UseGuards(JwtAuthGuard)
   async updateNote(
-    @Param('id') id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Body() dto: UpdateNoteDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<Note> {
@@ -133,7 +133,7 @@ export class NotesController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   async deleteNote(
-    @Param('id') id: number,
+    @Param('id', ParseEntityIdPipe) id: number,
     @Req() req: AuthenticatedRequest,
   ): Promise<void> {
     return this.notesService.deleteNote(id, req.user.userId);

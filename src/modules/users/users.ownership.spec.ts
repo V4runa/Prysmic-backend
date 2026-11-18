@@ -297,6 +297,27 @@ describe('User ownership and password serialization', () => {
     expect(foreign.body).toEqual(missing.body);
     expect(foreign.body.message).toBe('User not found');
     expect(JSON.stringify(foreign.body)).not.toContain(EMAIL_B);
+
+    for (const [method, url] of [
+      ['get', '/users/abc'],
+      ['get', '/users/1.5'],
+      ['get', '/users/2147483648'],
+      ['put', '/users/xyz'],
+    ] as const) {
+      const malformed = await request(server())
+        [method](url)
+        .set(auth(tokenA))
+        .send(method === 'put' ? { username: 'nope' } : undefined);
+      expect(malformed.status).toBe(404);
+      expect(malformed.body).toEqual({
+        statusCode: 404,
+        message: 'Not found',
+        error: 'Not Found',
+      });
+      expect(JSON.stringify(malformed.body)).not.toContain(EMAIL_A);
+      expect(JSON.stringify(malformed.body)).not.toContain(EMAIL_B);
+      expect(JSON.stringify(malformed.body)).not.toContain(PASS_A);
+    }
     expect(JSON.stringify(foreign.body)).not.toContain(NAME_B);
     expect(JSON.stringify(foreign.body)).not.toContain(PASS_B);
 
