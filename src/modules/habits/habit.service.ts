@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, Repository } from 'typeorm';
+import { Between, In, MoreThanOrEqual, Repository } from 'typeorm';
 import { Habit } from './habit.entity';
 import { HabitCheck } from './habit-check.entity';
 import { Note } from '../notes/notes.entity';
@@ -45,6 +49,43 @@ function isoDateToEpoch(d: string): number {
 function epochToIsoDate(t: number): string {
   const d = new Date(t);
   return d.toISOString().slice(0, 10);
+}
+
+// A month grid is at most 42 cells. 62 days covers that grid and a second
+// month without letting one call scan a habit's whole life.
+const MAX_CHECKIN_RANGE_DAYS = 62;
+
+function isRealIsoDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function parseCheckinRange(
+  from: string,
+  to: string,
+): { from: string; to: string } {
+  if (!isRealIsoDate(from) || !isRealIsoDate(to)) {
+    throw new BadRequestException('from and to must be valid YYYY-MM-DD dates');
+  }
+  if (from > to) {
+    throw new BadRequestException('from must be on or before to');
+  }
+  const days =
+    (isoDateToEpoch(to) - isoDateToEpoch(from)) / (24 * 60 * 60 * 1000) + 1;
+  if (days > MAX_CHECKIN_RANGE_DAYS) {
+    throw new BadRequestException(
+      `from and to must span at most ${MAX_CHECKIN_RANGE_DAYS} days`,
+    );
+  }
+  return { from, to };
 }
 
 // Only load check-ins from a rolling window instead of a habit's entire
@@ -327,5 +368,31 @@ export class HabitService {
     // Return the full updated habit (with recomputed streaks) so the client
     // does not need a follow-up GET request.
     return this.getHabitById(habitId, userId, today);
+  }
+
+  /**
+   * Kept days inside [from, to], inclusive, as the calendar dates that were
+   * checked. Weekly and monthly habits store that same day; the range is not
+   * expanded to the rest of the week or month. This read is not limited to
+   * the streak window. The unique (habitId, date) index covers the lookup.
+   */
+  async getCheckins(habitId: number, userId: number, from: string, to: string) {
+    const range = parseCheckinRange(from, to);
+    const habit = await this.habitRepo.findOne({
+      where: { id: habitId, userId },
+    });
+    if (!habit)
+      throw new NotFoundException('Habit not found or you do not have access.');
+
+    const checks = await this.checkRepo.find({
+      where: { habitId, date: Between(range.from, range.to) },
+      select: { date: true },
+    });
+
+    const dates = [...new Set(checks.map((check) => check.date))].sort(
+      (a, b) => isoDateToEpoch(a) - isoDateToEpoch(b),
+    );
+
+    return { from: range.from, to: range.to, dates };
   }
 }
