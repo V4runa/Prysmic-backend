@@ -6,6 +6,7 @@ import { Tag } from '../tags/tags.entity';
 import { Habit } from '../habits/habit.entity';
 import { Task } from '../tasks/tasks.entity';
 import { UserService } from '../users/user.service';
+import { User } from '../users/user.entity';
 
 // Notes are stored as HTML and can grow large. The list view only renders a
 // short text preview, so we ship a trimmed body instead of the full note to
@@ -46,7 +47,7 @@ export class NotesService {
       title,
       content,
       tags,
-      user,
+      user: { id: userId } as User,
       userId,
     });
 
@@ -79,6 +80,7 @@ export class NotesService {
     const notes = await qb.getMany();
     for (const note of notes) {
       note.content = truncateNotePreview(note.content);
+      this.present(note);
     }
     await this.attachOriginatedContracts(notes, userId);
     await this.attachOriginatedTasks(notes, userId);
@@ -219,6 +221,11 @@ export class NotesService {
   private present(note: Note): Note {
     if (note && 'user' in note) {
       delete (note as Partial<Note>).user;
+    }
+    if (Array.isArray(note?.tags)) {
+      for (const tag of note.tags) {
+        if (tag && 'user' in tag) delete (tag as { user?: unknown }).user;
+      }
     }
     return note;
   }

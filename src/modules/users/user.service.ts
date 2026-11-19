@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
 import { CreateUserDto, UpdateUserDto } from '../../dtos/user';
@@ -21,7 +21,7 @@ import {
 import { rowsFromQuery } from '../../database/query-rows';
 import { AuthRateLimiter } from '../auth/rate-limit';
 
-export interface PublicUser {
+export class PublicUser {
   id: number;
   username: string;
   email: string;
@@ -45,14 +45,14 @@ export interface PasswordChangeResult {
 
 /** Fields safe to send to a client. Password and relations stay off the wire. */
 export function toPublicUser(user: User): PublicUser {
-  return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    emailVerified: user.emailVerified === true,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  };
+  const pub = new PublicUser();
+  pub.id = user.id;
+  pub.username = user.username;
+  pub.email = user.email;
+  pub.emailVerified = user.emailVerified === true;
+  pub.createdAt = user.createdAt;
+  pub.updatedAt = user.updatedAt;
+  return pub;
 }
 
 @Injectable()
@@ -82,6 +82,65 @@ export class UserService {
   async findByEmail(email: string): Promise<User | null> {
     const matches = await this.findUsersByEmail(email);
     return matches.length === 1 ? matches[0] : null;
+  }
+
+  /**
+   * Login lookup. password and sessionVersion are select:false, so this query
+   * opts into both. Callers that only need to know the address is taken use
+   * findByEmail, which leaves the hash in the database.
+   */
+  async findByEmailForAuth(email: string): Promise<User | null> {
+    const normalized = email.trim().toLowerCase();
+    if (!this.canQuery()) return this.findByEmail(email);
+    const rows = await this.withSecrets(
+      this.userRepository.createQueryBuilder('user'),
+      ['password', 'sessionVersion'],
+    )
+      .where('LOWER(user.email) = :email', { email: normalized })
+      .orderBy('user.id', 'ASC')
+      .limit(2)
+      .getMany();
+    return rows.length === 1 ? rows[0] : null;
+  }
+
+  /**
+   * Login lookup by username. Same secret columns as findByEmailForAuth.
+   */
+  async findByUsernameForAuth(username: string): Promise<User | null> {
+    if (!this.canQuery()) return this.findByUsername(username);
+    return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
+      'password',
+      'sessionVersion',
+    ])
+      .where('user.username = :username', { username })
+      .getOne();
+  }
+
+  /**
+   * Access-token and refresh checks. Loads sessionVersion and leaves the
+   * password hash unselected.
+   */
+  async findByIdForSession(id: number): Promise<User | null> {
+    if (!this.canQuery()) return this.findById(id);
+    return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
+      'sessionVersion',
+    ])
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
+  /**
+   * Password confirmation: signed-in change, email change, and account
+   * deletion. Loads the hash and the session version.
+   */
+  async findByIdForPassword(id: number): Promise<User | null> {
+    if (!this.canQuery()) return this.findById(id);
+    return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
+      'password',
+      'sessionVersion',
+    ])
+      .where('user.id = :id', { id })
+      .getOne();
   }
 
   /**
@@ -198,15 +257,18 @@ export class UserService {
     }
 
     const emailChanged = nextEmail !== undefined;
+    const patch: Partial<User> = {};
     if (nextEmail) {
-      user.email = nextEmail;
-      user.emailVerified = false;
+      patch.email = nextEmail;
+      patch.emailVerified = false;
     }
     if (nextUsername) {
-      user.username = nextUsername;
+      patch.username = nextUsername;
     }
 
-    const saved = await this.userRepository.save(user);
+    // save() of a row loaded without select:false columns can write those
+    // columns back as null. update() sets only the profile fields.
+    const saved = await this.applyProfilePatch(user, patch);
     if (emailChanged) {
       await this.revokeVerificationTokens(saved.id);
     }
@@ -277,11 +339,34 @@ export class UserService {
     return updated.length > 0;
   }
 
+  private canQuery(): boolean {
+    return typeof this.userRepository.createQueryBuilder === 'function';
+  }
+
+  private withSecrets(
+    qb: SelectQueryBuilder<User>,
+    secrets: Array<'password' | 'sessionVersion'>,
+  ): SelectQueryBuilder<User> {
+    for (const secret of secrets) {
+      qb.addSelect(`user.${secret}`);
+    }
+    return qb;
+  }
+
+  /**
+   * Confirms the current password before an email change. The row from
+   * findById does not include the hash.
+   */
   private async assertCurrentPassword(
     user: User,
     currentPassword: string | undefined,
     ip: string,
   ): Promise<void> {
+    const withPassword = await this.findByIdForPassword(user.id);
+    if (!withPassword) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+    user = withPassword;
     if (!currentPassword) {
       throw new BadRequestException(EMAIL_CHANGE_PASSWORD_REQUIRED);
     }
@@ -292,6 +377,21 @@ export class UserService {
     );
     const matches = await bcrypt.compare(currentPassword, user.password);
     if (!matches) throw new UnauthorizedException(INVALID_CREDENTIALS);
+  }
+
+  private async applyProfilePatch(
+    user: User,
+    patch: Partial<User>,
+  ): Promise<User> {
+    if (Object.keys(patch).length === 0) return user;
+    if (this.canQuery() && typeof this.userRepository.update === 'function') {
+      await this.userRepository.update(user.id, patch);
+      const saved = await this.findById(user.id);
+      if (!saved) throw new NotFoundException('User not found');
+      return saved;
+    }
+    Object.assign(user, patch);
+    return this.userRepository.save(user);
   }
 
   private async revokeVerificationTokens(userId: number): Promise<void> {

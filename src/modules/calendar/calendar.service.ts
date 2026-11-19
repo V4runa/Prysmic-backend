@@ -23,6 +23,7 @@ import {
   CalendarTaskItem,
   CalendarTaskReason,
 } from './calendar.types';
+import { withoutUser } from '../../common/without-user';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_OCCURRENCES = 1000; // safety cap for runaway recurrence expansion
@@ -114,7 +115,7 @@ export class CalendarService {
       color: dto.color ?? 'cyan',
       userId,
     });
-    return this.eventRepo.save(event);
+    return withoutUser(await this.eventRepo.save(event));
   }
 
   // A missing id and someone else's id both 404 with the same message. The
@@ -123,11 +124,12 @@ export class CalendarService {
   async getEvent(id: number, userId: number) {
     const event = await this.eventRepo.findOne({ where: { id, userId } });
     if (!event) throw new NotFoundException('Event not found');
-    return event;
+    return withoutUser(event);
   }
 
   async updateEvent(id: number, userId: number, dto: UpdateCalendarEventDto) {
-    const event = await this.getEvent(id, userId);
+    const event = await this.eventRepo.findOne({ where: { id, userId } });
+    if (!event) throw new NotFoundException('Event not found');
     if (dto.linkedType !== undefined || dto.linkedId !== undefined) {
       const linkedType =
         dto.linkedType !== undefined ? dto.linkedType : event.linkedType;
@@ -136,7 +138,7 @@ export class CalendarService {
       await this.assertOwnedLink(userId, linkedType, linkedId);
     }
     this.eventRepo.merge(event, this.normalizeEventInput(dto));
-    return this.eventRepo.save(event);
+    return withoutUser(await this.eventRepo.save(event));
   }
 
   /**
@@ -180,7 +182,8 @@ export class CalendarService {
   }
 
   async deleteEvent(id: number, userId: number) {
-    const event = await this.getEvent(id, userId);
+    const event = await this.eventRepo.findOne({ where: { id, userId } });
+    if (!event) throw new NotFoundException('Event not found');
     await this.eventRepo.remove(event);
     return { success: true };
   }

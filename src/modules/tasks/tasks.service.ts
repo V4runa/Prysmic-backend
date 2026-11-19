@@ -7,6 +7,7 @@ import { UpdateTaskDto } from '../../dtos/update-task.dto';
 import { User } from '../users/user.entity';
 import { Tag } from '../tags/tags.entity';
 import { Note } from '../notes/notes.entity';
+import { withoutUser } from '../../common/without-user';
 
 type OriginNoteSummary = { id: number; title: string };
 
@@ -43,7 +44,7 @@ export class TaskService {
     const origin = await this.requireOwnedOrigin(userId, dto.originNoteId);
     const task = this.taskRepo.create({
       ...withoutTagIds(dto),
-      user,
+      user: { id: userId } as User,
       userId,
       tags,
       originNoteId: origin?.id ?? null,
@@ -230,13 +231,12 @@ export class TaskService {
   }
 
   private shape(task: Task, origin: OriginNoteSummary | null): Task {
-    const view = {
-      ...task,
-      originNoteId: task.originNoteId ?? null,
-      originNote: origin ? { id: origin.id, title: origin.title } : null,
-    };
-    delete (view as Partial<Task>).user;
-    return view as Task;
+    const view = withoutUser(task);
+    view.originNoteId = task.originNoteId ?? null;
+    (view as { originNote: OriginNoteSummary | null }).originNote = origin
+      ? { id: origin.id, title: origin.title }
+      : null;
+    return view;
   }
 }
 

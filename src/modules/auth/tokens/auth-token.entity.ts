@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import {
   Column,
   CreateDateColumn,
@@ -20,6 +21,7 @@ export class AuthToken {
   purpose: AuthTokenPurpose;
 
   /** SHA-256 hex of the raw token. The raw token is never stored. */
+  @Exclude()
   @Column({ type: 'varchar', length: 64, unique: true })
   tokenHash: string;
 

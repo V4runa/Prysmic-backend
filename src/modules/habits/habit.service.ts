@@ -11,6 +11,7 @@ import { Note } from '../notes/notes.entity';
 import { CreateHabitDto } from '../../dtos/create-habit.dto';
 import { UpdateHabitDto } from '../../dtos/update-habit.dto';
 import { HabitFrequency } from '../../enums/habit-frequency.enum';
+import { withoutUser } from '../../common/without-user';
 
 type OriginNoteSummary = { id: number; title: string };
 
@@ -171,7 +172,7 @@ export class HabitService {
       originNoteId: origin?.id ?? null,
     });
     const saved = await this.habitRepo.save(habit);
-    return this.withOrigin(saved, origin);
+    return this.withOrigin(withoutUser(saved), origin);
   }
 
   /**
@@ -213,12 +214,11 @@ export class HabitService {
     return summaries;
   }
 
-  private withOrigin(habit: Habit, origin: OriginNoteSummary | null) {
-    return {
-      ...habit,
-      originNoteId: habit.originNoteId ?? null,
-      originNote: origin,
-    };
+  private withOrigin(habit: Habit, origin: OriginNoteSummary | null): Habit {
+    const view = withoutUser(habit);
+    view.originNoteId = habit.originNoteId ?? null;
+    view.originNote = origin as Habit['originNote'];
+    return view;
   }
 
   // Load only the check dates for the given habits, grouped by habitId.
@@ -258,12 +258,15 @@ export class HabitService {
     origin: OriginNoteSummary | null,
   ) {
     const s = computeStreaks(dates, today);
-    return {
-      ...this.withOrigin(habit, origin),
-      checkedToday: s.checkedToday,
-      currentStreak: s.currentStreak,
-      longestStreak: s.longestStreak,
+    const view = this.withOrigin(habit, origin) as Habit & {
+      checkedToday: boolean;
+      currentStreak: number;
+      longestStreak: number;
     };
+    view.checkedToday = s.checkedToday;
+    view.currentStreak = s.currentStreak;
+    view.longestStreak = s.longestStreak;
+    return view;
   }
 
   async getHabits(userId: number, clientToday?: string) {
@@ -342,7 +345,7 @@ export class HabitService {
     });
     if (!habit) throw new NotFoundException('Habit not found');
     habit.isActive = false;
-    return this.habitRepo.save(habit);
+    return withoutUser(await this.habitRepo.save(habit));
   }
 
   async toggleCheck(habitId: number, userId: number, clientToday?: string) {

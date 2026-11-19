@@ -747,6 +747,13 @@ describe('Account export', () => {
                 username: 'synth',
                 email: 'synth@example.test',
               }),
+            findByIdForSession: (id: number) =>
+              Promise.resolve({
+                id,
+                sessionVersion: 0,
+                username: 'synth',
+                email: 'synth@example.test',
+              }),
           },
         },
         { provide: DataSource, useValue: memory.dataSource },

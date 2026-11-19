@@ -1,5 +1,6 @@
 // src/modules/moods/mood-option.entity.ts
 
+import { Exclude } from 'class-transformer';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -38,6 +39,7 @@ export class MoodOption {
   @CreateDateColumn()
   createdAt: Date;
 
+  @Exclude()
   @ManyToOne(() => User, (user) => user.moodOptions, { onDelete: 'CASCADE' })
   user: User;
 }

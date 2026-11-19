@@ -231,20 +231,22 @@ async function harness(
   const provider = new MemoryProvider(configured, fail);
   const hash = await bcrypt.hash(PASSWORD, 4);
   const assert = jest.fn(assertLimit);
+  const stored = (id: number) =>
+    Promise.resolve(
+      id === 7
+        ? {
+            id: 7,
+            email: 'gone@example.test',
+            username: 'gone',
+            password: hash,
+            emailVerified,
+          }
+        : null,
+    );
   const service = new AccountLifecycleService(
     {
-      findById: (id: number) =>
-        Promise.resolve(
-          id === 7
-            ? {
-                id: 7,
-                email: 'gone@example.test',
-                username: 'gone',
-                password: hash,
-                emailVerified,
-              }
-            : null,
-        ),
+      findById: stored,
+      findByIdForPassword: stored,
     } as never,
     {} as never,
     delivery(provider),

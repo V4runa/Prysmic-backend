@@ -40,7 +40,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!Number.isInteger(userId)) {
       throw new UnauthorizedException('Unauthorized: Invalid or missing token');
     }
-    const user = await this.userService.findById(userId);
+    const user = await this.userService.findByIdForSession(userId);
     if (!user || !sessionVersionMatches(user.sessionVersion, payload.sv)) {
       throw new UnauthorizedException('Unauthorized: Invalid or missing token');
     }

@@ -18,7 +18,7 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column()
+  @Column({ select: false })
   @Exclude()
   password: string;
 
@@ -30,7 +30,7 @@ export class User {
    * Incremented when the password changes. Access tokens carry the same
    * number and stop matching afterwards. Hidden from API responses.
    */
-  @Column({ default: 0 })
+  @Column({ default: 0, select: false })
   @Exclude()
   sessionVersion: number;
 

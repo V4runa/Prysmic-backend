@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MoodOption, DEFAULT_MOOD_OPTIONS } from './mood-option.entity';
+import { MoodOptionResponse } from './mood-option.response';
 import { CreateMoodOptionDto } from '../../dtos/create-mood-option.dto';
 import { UpdateMoodOptionDto } from '../../dtos/update-mood-option.dto';
 
@@ -23,16 +24,19 @@ export class MoodOptionService {
    * how a new account receives the defaults. Any palette that already has a
    * mood is returned unchanged.
    */
-  async getAll(userId: number): Promise<MoodOption[]> {
+  async getAll(userId: number): Promise<MoodOptionResponse[]> {
     let options = await this.findForUser(userId);
     if (options.length === 0) {
       await this.seedDefaults(userId);
       options = await this.findForUser(userId);
     }
-    return options;
+    return options.map((option) => MoodOptionResponse.from(option));
   }
 
-  async create(userId: number, dto: CreateMoodOptionDto): Promise<MoodOption> {
+  async create(
+    userId: number,
+    dto: CreateMoodOptionDto,
+  ): Promise<MoodOptionResponse> {
     const label = dto.label.trim();
     const existing = await this.repo.findOne({
       where: { user: { id: userId }, label },
@@ -54,14 +58,14 @@ export class MoodOptionService {
       user: { id: userId } as any,
     });
 
-    return this.repo.save(option);
+    return MoodOptionResponse.from(await this.repo.save(option));
   }
 
   async update(
     userId: number,
     id: number,
     dto: UpdateMoodOptionDto,
-  ): Promise<MoodOption> {
+  ): Promise<MoodOptionResponse> {
     const option = await this.repo.findOne({
       where: { id, user: { id: userId } },
     });
@@ -84,7 +88,7 @@ export class MoodOptionService {
     if (dto.emoji !== undefined) option.emoji = dto.emoji;
     if (dto.color !== undefined) option.color = dto.color;
 
-    return this.repo.save(option);
+    return MoodOptionResponse.from(await this.repo.save(option));
   }
 
   async remove(userId: number, id: number): Promise<{ message: string }> {

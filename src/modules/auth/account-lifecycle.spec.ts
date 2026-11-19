@@ -465,11 +465,11 @@ describe('account lifecycle units', () => {
     );
     const auth = new AuthService(
       {
-        findByUsername: (identifier: string) =>
+        findByUsernameForAuth: (identifier: string) =>
           Promise.resolve(
             identifier === usernameOwner.username ? usernameOwner : null,
           ),
-        findByEmail: (identifier: string) =>
+        findByEmailForAuth: (identifier: string) =>
           Promise.resolve(
             identifier.toLowerCase() === emailOwner.email ? emailOwner : null,
           ),
