@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 import helmet from 'helmet';
+import { corsOrigins } from './cors-origins';
 
 dotenv.config();
 
@@ -32,12 +33,7 @@ async function bootstrap() {
     }),
   );
 
-  const allowedOrigins = [
-    ...(process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(',').map((u) => u.trim())
-      : []),
-    'http://localhost:3000',
-  ].filter(Boolean);
+  const allowedOrigins = corsOrigins(process.env.FRONTEND_URL);
 
   app.enableCors({
     origin: allowedOrigins,
