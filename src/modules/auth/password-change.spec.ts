@@ -226,7 +226,7 @@ describe('signed-in password change and email change', () => {
         { provide: DataSource, useValue: {} },
         {
           provide: OnboardingService,
-          useValue: { seedSampleData: () => Promise.resolve() },
+          useValue: { seedDefaultMoods: () => Promise.resolve() },
         },
         { provide: getRepositoryToken(User), useValue: memory.repo },
         { provide: getRepositoryToken(AuthToken), useValue: memory.tokens },

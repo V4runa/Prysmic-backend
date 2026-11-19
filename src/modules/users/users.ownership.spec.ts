@@ -152,7 +152,7 @@ describe('User ownership and password serialization', () => {
         JwtStrategy,
         {
           provide: OnboardingService,
-          useValue: { seedSampleData: () => Promise.resolve() },
+          useValue: { seedDefaultMoods: () => Promise.resolve() },
         },
         {
           provide: AccountLifecycleService,

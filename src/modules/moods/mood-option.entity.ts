@@ -68,3 +68,20 @@ export const DEFAULT_MOOD_OPTIONS: ReadonlyArray<{
   { label: 'Angry', emoji: '🔥', color: 'red' },
   { label: 'Hopeful', emoji: '🌈', color: 'fuchsia' },
 ];
+
+/** Rows inserted when an account receives the default palette. */
+export function defaultMoodOptionDrafts(userId: number): Array<{
+  label: string;
+  emoji: string;
+  color: string;
+  sortOrder: number;
+  user: { id: number };
+}> {
+  return DEFAULT_MOOD_OPTIONS.map((mood, sortOrder) => ({
+    label: mood.label,
+    emoji: mood.emoji,
+    color: mood.color,
+    sortOrder,
+    user: { id: userId },
+  }));
+}

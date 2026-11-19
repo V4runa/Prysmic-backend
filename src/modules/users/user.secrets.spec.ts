@@ -10,6 +10,7 @@ const row = {
   emailVerified: true,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+  tourSeenAt: new Date('2026-01-03T00:00:00.000Z'),
 };
 
 function service(repo: object): UserService {
@@ -30,6 +31,7 @@ describe('user reads do not carry secret columns', () => {
     const listed = await users.findByEmail('keeper@example.test');
     expect(listed?.id).toBe(1);
     expect(listed?.email).toBe('Keeper@Example.test');
+    expect(listed?.tourSeenAt).toEqual(row.tourSeenAt);
     expect(listed?.password).toBeUndefined();
     expect(listed?.sessionVersion).toBeUndefined();
 

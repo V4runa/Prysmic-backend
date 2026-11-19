@@ -29,6 +29,7 @@ const PUBLIC_USER_COLUMNS = [
   'user.emailVerified',
   'user.createdAt',
   'user.updatedAt',
+  'user.tourSeenAt',
 ];
 
 export class PublicUser {
@@ -38,6 +39,8 @@ export class PublicUser {
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
+  /** ISO timestamp once the tour has been seen. Null until then. */
+  tourSeenAt: Date | null;
 }
 
 export interface UserUpdateResult {
@@ -62,6 +65,7 @@ export function toPublicUser(user: User): PublicUser {
   pub.emailVerified = user.emailVerified === true;
   pub.createdAt = user.createdAt;
   pub.updatedAt = user.updatedAt;
+  pub.tourSeenAt = user.tourSeenAt ?? null;
   return pub;
 }
 
@@ -85,6 +89,7 @@ export class UserService {
       password,
       emailVerified: false,
       sessionVersion: 0,
+      tourSeenAt: null,
     });
     return await this.userRepository.save(user);
   }
@@ -284,6 +289,23 @@ export class UserService {
       await this.revokeVerificationTokens(saved.id);
     }
     return { user: saved, emailChanged };
+  }
+
+  /**
+   * `seen` stores the current time. `false` clears it so the tour can replay.
+   * Returns the stored value.
+   */
+  async setTourSeenAt(id: number, seen: boolean): Promise<Date | null> {
+    const user = await this.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    // Writes tourSeenAt only. save() of a row loaded without the hash could
+    // otherwise touch password or sessionVersion.
+    const saved = await this.applyProfilePatch(user, {
+      tourSeenAt: seen ? new Date() : null,
+    });
+    return saved.tourSeenAt ?? null;
   }
 
   /**

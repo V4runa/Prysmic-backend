@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -26,6 +27,16 @@ export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
   username: string;
+}
+
+/**
+ * Body for PATCH /users/me/tour.
+ * Omit `seen`, or send true, to mark the tour seen. False clears it.
+ */
+export class UpdateTourSeenDto {
+  @IsOptional()
+  @IsBoolean()
+  seen?: boolean;
 }
 
 /** Body for DELETE /users/me. The current password, not a new one. */

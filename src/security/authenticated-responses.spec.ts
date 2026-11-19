@@ -647,7 +647,7 @@ describe('authenticated responses omit secrets', () => {
         { provide: EMAIL_PROVIDER, useValue: mailbox },
         {
           provide: OnboardingService,
-          useValue: { seedSampleData: () => Promise.resolve() },
+          useValue: { seedDefaultMoods: () => Promise.resolve() },
         },
         { provide: RefreshSessionService, useValue: sessions },
         { provide: DataSource, useValue: dataSource },
@@ -726,7 +726,34 @@ describe('authenticated responses omit secrets', () => {
     expect(me.status).toBe(200);
     scan('GET /users', me.body, JSON.stringify(me.body));
     expect(me.headers['cache-control']).toBe('no-store');
+    expect(me.body[0].tourSeenAt).toBeNull();
+    expect(me.body[0].password).toBeUndefined();
+    expect(me.body[0].sessionVersion).toBeUndefined();
     const userId = me.body[0].id as number;
+
+    const seen = await request(server())
+      .patch('/users/me/tour')
+      .set(auth)
+      .send({});
+    expect(seen.status).toBe(200);
+    scan('PATCH /users/me/tour', seen.body, JSON.stringify(seen.body));
+    expect(typeof seen.body.tourSeenAt).toBe('string');
+    expect(seen.body.password).toBeUndefined();
+    expect(seen.body.sessionVersion).toBeUndefined();
+    expect(seen.headers['cache-control']).toBe('no-store');
+    const cleared = await request(server())
+      .patch('/users/me/tour')
+      .set(auth)
+      .send({ seen: false });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual({ tourSeenAt: null });
+    scan(
+      'PATCH /users/me/tour clear',
+      cleared.body,
+      JSON.stringify(cleared.body),
+    );
+    expect(stored?.password).toEqual(expect.stringMatching(/^\$2[aby]\$/));
+    expect(stored?.sessionVersion).toBe(2);
 
     const self = await request(server()).get(`/users/${userId}`).set(auth);
     const byName = await request(server())

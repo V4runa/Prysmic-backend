@@ -475,7 +475,7 @@ describe('account lifecycle units', () => {
           ),
       } as never,
       new JwtService({ secret: 'unit-secret' }),
-      { seedSampleData: () => Promise.resolve() } as never,
+      { seedDefaultMoods: () => Promise.resolve() } as never,
       { sendVerificationEmail: () => Promise.resolve() } as never,
       { issue: () => Promise.resolve('refresh-raw') } as never,
     );

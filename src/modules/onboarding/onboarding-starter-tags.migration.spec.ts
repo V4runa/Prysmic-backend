@@ -11,7 +11,7 @@ import {
 import { CalendarEvent } from '../calendar/calendar-event.entity';
 import { HabitCheck } from '../habits/habit-check.entity';
 import { Habit } from '../habits/habit.entity';
-import { MoodOption } from '../moods/mood-option.entity';
+import { DEFAULT_MOOD_OPTIONS, MoodOption } from '../moods/mood-option.entity';
 import { Mood } from '../moods/mood.entity';
 import { NoteAttachment } from '../notes/note-attachment.entity';
 import { Note } from '../notes/notes.entity';
@@ -392,58 +392,49 @@ describe('onboarding starter tag migration', () => {
     );
   });
 
-  it('persists every starter tag on a note or a task for a new account', async () => {
+  it('seeds default moods and no sample content for a new account', async () => {
     const owner = await user('fresh-signup');
-    const service = new OnboardingService(
-      dataSource.getRepository(Tag),
-      dataSource.getRepository(Note),
-      dataSource.getRepository(Habit),
-      dataSource.getRepository(Task),
-    );
-    await service.seedSampleData(owner.id);
+    const service = new OnboardingService(dataSource.getRepository(MoodOption));
+    await service.seedDefaultMoods(owner.id);
 
-    const counts: Array<{ name: string; notes: string; tasks: string }> =
-      await dataSource.query(
-        `SELECT t.name,
-                (SELECT COUNT(*) FROM "note_tags" nt WHERE nt."tagsId" = t.id) AS notes,
-                (SELECT COUNT(*) FROM "task_tags" tt WHERE tt."tagsId" = t.id) AS tasks
-         FROM "tags" t
-         WHERE t."userId" = $1
-         ORDER BY t.name`,
-        [owner.id],
-      );
     expect(
-      counts.map((row) => ({
-        name: row.name,
-        notes: Number(row.notes),
-        tasks: Number(row.tasks),
+      await dataSource
+        .getRepository(Note)
+        .count({ where: { userId: owner.id } }),
+    ).toBe(0);
+    expect(
+      await dataSource
+        .getRepository(Task)
+        .count({ where: { userId: owner.id } }),
+    ).toBe(0);
+    expect(
+      await dataSource
+        .getRepository(Habit)
+        .count({ where: { userId: owner.id } }),
+    ).toBe(0);
+    expect(
+      await dataSource
+        .getRepository(Tag)
+        .count({ where: { user: { id: owner.id } } }),
+    ).toBe(0);
+
+    const moods = await dataSource.getRepository(MoodOption).find({
+      where: { user: { id: owner.id } },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    expect(
+      moods.map((mood) => ({
+        label: mood.label,
+        emoji: mood.emoji,
+        color: mood.color,
+        sortOrder: mood.sortOrder,
       })),
-    ).toEqual([
-      { name: 'Gratitude', notes: 1, tasks: 0 },
-      { name: 'Ideas', notes: 1, tasks: 0 },
-      { name: 'Reflections', notes: 2, tasks: 0 },
-      { name: 'Someday', notes: 1, tasks: 1 },
-    ]);
-
-    const notes = await dataSource.getRepository(Note).find({
-      where: { userId: owner.id },
-      relations: ['tags'],
-    });
-    const thought = notes.find(
-      (row) => row.title === gratitudeSampleNote.title,
+    ).toEqual(
+      DEFAULT_MOOD_OPTIONS.map((mood, sortOrder) => ({
+        ...mood,
+        sortOrder,
+      })),
     );
-    expect(thought?.content).toBe(gratitudeSampleNote.to);
-    expect(names(thought?.tags)).toEqual(['Gratitude', 'Reflections']);
-    const idea = notes.find((row) => row.title === somedaySampleNote.title);
-    expect(names(idea?.tags)).toEqual(['Ideas', 'Someday']);
-
-    const tasks = await dataSource.getRepository(Task).find({
-      where: { userId: owner.id },
-      relations: ['tags'],
-    });
-    const forge = tasks.find((row) => row.title === somedaySampleTask.title);
-    expect(forge?.description).toBe(somedaySampleTask.description);
-    expect(names(forge?.tags)).toEqual(['Someday']);
   });
 
   async function user(username: string): Promise<User> {

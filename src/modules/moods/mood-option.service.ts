@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { MoodOption, DEFAULT_MOOD_OPTIONS } from './mood-option.entity';
+import { MoodOption, defaultMoodOptionDrafts } from './mood-option.entity';
 import { MoodOptionResponse } from './mood-option.response';
 import { CreateMoodOptionDto } from '../../dtos/create-mood-option.dto';
 import { UpdateMoodOptionDto } from '../../dtos/update-mood-option.dto';
@@ -112,14 +112,8 @@ export class MoodOptionService {
   }
 
   private async seedDefaults(userId: number): Promise<void> {
-    const entities = DEFAULT_MOOD_OPTIONS.map((d, i) =>
-      this.repo.create({
-        label: d.label,
-        emoji: d.emoji,
-        color: d.color,
-        sortOrder: i,
-        user: { id: userId } as any,
-      }),
+    const entities = defaultMoodOptionDrafts(userId).map((draft) =>
+      this.repo.create(draft),
     );
     try {
       await this.repo.save(entities);

@@ -97,7 +97,7 @@ describe('password policy', () => {
         usernameCollidesWithEmail: jest.fn(),
       } as never,
       new JwtService({ secret: 'unit-secret' }),
-      { seedSampleData: () => Promise.resolve() } as never,
+      { seedDefaultMoods: () => Promise.resolve() } as never,
       { sendVerificationEmail: () => undefined } as never,
       { issue: () => Promise.resolve('refresh-raw') } as never,
     );
@@ -134,7 +134,7 @@ function service(user: User): AuthService {
         Promise.resolve(identifier.toLowerCase() === user.email ? user : null),
     } as never,
     new JwtService({ secret: 'unit-secret' }),
-    { seedSampleData: () => Promise.resolve() } as never,
+    { seedDefaultMoods: () => Promise.resolve() } as never,
     { sendVerificationEmail: () => undefined } as never,
     { issue: () => Promise.resolve('refresh-raw') } as never,
   );

@@ -1,19 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { MoodOption } from '../moods/mood-option.entity';
 import { OnboardingService } from './onboarding.service';
-import { Tag } from '../tags/tags.entity';
-import { Note } from '../notes/notes.entity';
-import { Habit } from '../habits/habit.entity';
-import { Task } from '../tasks/tasks.entity';
 
 /**
- * Standalone seeding module. It depends only on the TypeORM repositories for
- * the entities it seeds — deliberately NOT on the feature modules
- * (Tags/Notes/Habit/Task), since importing those alongside AuthModule creates a
- * circular dependency (Auth -> Onboarding -> Tags -> Notes -> User -> Auth).
+ * Seeds the default mood palette at signup. It depends only on that
+ * repository, not on MoodModule, because importing the feature module from
+ * AuthModule cycles through UserModule.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Tag, Note, Habit, Task])],
+  imports: [TypeOrmModule.forFeature([MoodOption])],
   providers: [OnboardingService],
   exports: [OnboardingService],
 })
