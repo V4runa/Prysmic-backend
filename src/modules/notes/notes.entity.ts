@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import {
   Column,
   Entity,
@@ -46,6 +47,7 @@ export class Note {
   @JoinTable({ name: 'note_tags' })
   tags: Tag[];
 
+  @Exclude()
   @ManyToOne(() => User, (user) => user.notes, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;

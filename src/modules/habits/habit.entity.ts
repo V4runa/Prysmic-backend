@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -53,6 +54,7 @@ export class Habit {
   @Column({ default: true })
   isActive: boolean;
 
+  @Exclude()
   @ManyToOne(() => User, (user) => user.habits, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;

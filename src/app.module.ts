@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { ClassSerializerInterceptor, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { NoStoreInterceptor } from './common/no-store.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { SentryReportingFilter } from './sentry/sentry-reporting.filter';
@@ -54,6 +55,14 @@ import { AppController } from './app.controller';
     {
       provide: APP_FILTER,
       useClass: SentryReportingFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ClassSerializerInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: NoStoreInterceptor,
     },
   ],
 })

@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Mood } from './mood.entity';
 import { Repository } from 'typeorm';
 import { CreateMoodDto } from '../../dtos/create-mood.dto';
+import { MoodResponse } from './mood.response';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -18,23 +19,29 @@ export class MoodService {
   /**
    * Get today's mood for a user, bucketed by the user's local day.
    */
-  async getToday(userId: number, clientDate?: string): Promise<Mood | null> {
+  async getToday(
+    userId: number,
+    clientDate?: string,
+  ): Promise<MoodResponse | null> {
     const day = this.resolveDay(clientDate);
 
-    return this.moodRepository.findOne({
+    const mood = await this.moodRepository.findOne({
       where: {
         user: { id: userId },
         date: day,
       },
-      relations: ['user'],
       order: { createdAt: 'DESC' },
     });
+    return mood ? MoodResponse.from(mood) : null;
   }
 
   /**
    * Create or overwrite today's mood (one per local calendar day).
    */
-  async createOrUpdateToday(userId: number, dto: CreateMoodDto): Promise<Mood> {
+  async createOrUpdateToday(
+    userId: number,
+    dto: CreateMoodDto,
+  ): Promise<MoodResponse> {
     const day = this.resolveDay(dto.date);
 
     const existing = await this.moodRepository.findOne({
@@ -42,18 +49,23 @@ export class MoodService {
         user: { id: userId },
         date: day,
       },
-      relations: ['user'],
     });
 
     if (existing) {
       // Editing an existing day never re-classifies it: a day that already
       // counted toward a streak must not silently drop out (or vice versa) just
       // because the user tweaked the emoji/note later via the calendar.
-      existing.emoji = dto.emoji;
-      if (dto.note !== undefined) existing.note = dto.note;
-      if (dto.moodType !== undefined) existing.moodType = dto.moodType;
-      if (dto.color !== undefined) existing.color = dto.color;
-      return this.moodRepository.save(existing);
+      // update() writes only these columns, so the owner foreign key stays.
+      const patch: Partial<Mood> = { emoji: dto.emoji };
+      if (dto.note !== undefined) patch.note = dto.note;
+      if (dto.moodType !== undefined) patch.moodType = dto.moodType;
+      if (dto.color !== undefined) patch.color = dto.color;
+      await this.moodRepository.update(existing.id, patch);
+      const saved = await this.moodRepository.findOne({
+        where: { id: existing.id, user: { id: userId } },
+      });
+      if (!saved) throw new NotFoundException('Mood entry not found');
+      return MoodResponse.from(saved);
     }
 
     const mood = this.moodRepository.create({
@@ -66,18 +78,19 @@ export class MoodService {
       user: { id: userId } as any,
     });
 
-    return this.moodRepository.save(mood);
+    return MoodResponse.from(await this.moodRepository.save(mood));
   }
 
   /**
    * Get last 10 mood entries
    */
-  async getHistory(userId: number): Promise<Mood[]> {
-    return this.moodRepository.find({
+  async getHistory(userId: number): Promise<MoodResponse[]> {
+    const moods = await this.moodRepository.find({
       where: { user: { id: userId } },
       order: { createdAt: 'DESC' },
       take: 10,
     });
+    return moods.map((mood) => MoodResponse.from(mood));
   }
 
   /**
@@ -87,19 +100,23 @@ export class MoodService {
   async getAll(
     userId: number,
     options: { limit?: number; offset?: number } = {},
-  ): Promise<Mood[]> {
-    return this.moodRepository.find({
+  ): Promise<MoodResponse[]> {
+    const moods = await this.moodRepository.find({
       where: { user: { id: userId } },
       order: { createdAt: 'DESC' },
       ...(options.limit !== undefined ? { take: options.limit } : {}),
       ...(options.offset !== undefined ? { skip: options.offset } : {}),
     });
+    return moods.map((mood) => MoodResponse.from(mood));
   }
 
   /**
    * Delete a mood by ID (only if it belongs to the user)
    */
-  async deleteById(userId: number, moodId: number): Promise<{ message: string }> {
+  async deleteById(
+    userId: number,
+    moodId: number,
+  ): Promise<{ message: string }> {
     const mood = await this.moodRepository.findOne({
       where: { id: moodId, user: { id: userId } },
     });

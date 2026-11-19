@@ -32,6 +32,7 @@ import {
   readRefreshCookie,
   setRefreshCookie,
 } from './sessions/refresh-cookie';
+import { AuthSessionResponse } from './auth-session.response';
 
 @Controller('auth')
 @UseFilters(RateLimitFilter)
@@ -145,11 +146,11 @@ export class AuthController {
   }
 
   /** Puts the refresh token in the cookie and keeps it out of the JSON body. */
-  private sendSession(res: Response, session: IssuedSession) {
+  private sendSession(
+    res: Response,
+    session: IssuedSession,
+  ): AuthSessionResponse {
     setRefreshCookie(res, session.refreshToken);
-    return {
-      access_token: session.access_token,
-      emailVerified: session.emailVerified,
-    };
+    return AuthSessionResponse.from(session);
   }
 }

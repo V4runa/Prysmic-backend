@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import {
   Column,
   Entity,
@@ -29,6 +30,7 @@ export class Tag {
   @ManyToMany(() => Task, (task) => task.tags)
   tasks: Task[];
 
+  @Exclude()
   @ManyToOne(() => User, (user) => user.tags, { onDelete: 'CASCADE' })
   user: User;
 

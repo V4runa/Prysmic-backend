@@ -11,6 +11,7 @@ import { TagsService } from '../tags/tags.service';
 import { AuthRateLimiter } from '../auth/rate-limit';
 import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { User } from '../users/user.entity';
+import { userQueryBuilder } from '../../testing/user-query';
 import { UserService } from '../users/user.service';
 import { NoteAttachment } from './note-attachment.entity';
 import { NoteAttachmentsController } from './note-attachments.controller';
@@ -533,6 +534,9 @@ function createMemory() {
         return id !== undefined || !!where.email || !!where.username;
       });
       return found ? { ...found } : null;
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
   };
 

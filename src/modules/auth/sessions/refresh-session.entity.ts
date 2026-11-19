@@ -1,3 +1,4 @@
+import { Exclude } from 'class-transformer';
 import {
   Column,
   CreateDateColumn,
@@ -27,6 +28,7 @@ export class RefreshSession {
   familyId: string;
 
   /** SHA-256 hex of the raw token. */
+  @Exclude()
   @Column({ type: 'varchar', length: 64, unique: true })
   tokenHash: string;
 
@@ -34,6 +36,7 @@ export class RefreshSession {
    * AES-GCM seal of the successor raw token. Set when this row is rotated
    * and cleared once the reuse grace window has passed.
    */
+  @Exclude()
   @Column({ type: 'text', nullable: true })
   successorSeal: string | null;
 

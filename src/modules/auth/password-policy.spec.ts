@@ -128,9 +128,9 @@ async function account(password: string): Promise<User> {
 function service(user: User): AuthService {
   return new AuthService(
     {
-      findByUsername: (identifier: string) =>
+      findByUsernameForAuth: (identifier: string) =>
         Promise.resolve(identifier === user.username ? user : null),
-      findByEmail: (identifier: string) =>
+      findByEmailForAuth: (identifier: string) =>
         Promise.resolve(identifier.toLowerCase() === user.email ? user : null),
     } as never,
     new JwtService({ secret: 'unit-secret' }),

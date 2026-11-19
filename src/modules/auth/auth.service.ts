@@ -51,8 +51,8 @@ export class AuthService {
     identifier: string,
     password: string,
   ): Promise<SessionUser> {
-    const byUsername = await this.userService.findByUsername(identifier);
-    const byEmail = await this.userService.findByEmail(identifier);
+    const byUsername = await this.userService.findByUsernameForAuth(identifier);
+    const byEmail = await this.userService.findByEmailForAuth(identifier);
     const candidates: User[] = [];
     if (byUsername) candidates.push(byUsername);
     if (byEmail && (!byUsername || byEmail.id !== byUsername.id)) {
@@ -155,7 +155,7 @@ export class AuthService {
   async refresh(raw: string | null): Promise<IssuedSession> {
     const rotated = await this.sessions.rotate(raw);
     if (!rotated.ok) throw refreshDenied(rotated.reason);
-    const user = await this.userService.findById(rotated.userId);
+    const user = await this.userService.findByIdForSession(rotated.userId);
     if (!user) {
       await this.sessions.revokePresented(rotated.refreshToken);
       throw refreshDenied('revoked');

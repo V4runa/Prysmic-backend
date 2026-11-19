@@ -15,6 +15,7 @@ import { TagsController } from '../tags/tags.controller';
 import { TagsService } from '../tags/tags.service';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
+import { userQueryBuilder } from '../../testing/user-query';
 import { Task } from './tasks.entity';
 import { TaskController } from './tasks.controller';
 import { TaskService } from './tasks.service';
@@ -436,6 +437,9 @@ function createMemory() {
       const id = asNumber(where?.id);
       const found = users.find((user) => user.id === id);
       return found ? { ...found } : null;
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
   };
 

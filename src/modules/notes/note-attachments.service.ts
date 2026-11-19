@@ -13,8 +13,8 @@ import {
   resolveAllowedMime,
 } from './note-attachments.constants';
 
-/** Public-facing attachment shape (never includes the raw bytes). */
-export interface AttachmentMeta {
+/** Public-facing attachment shape (never includes the raw bytes or the owner). */
+export class AttachmentMeta {
   id: number;
   filename: string;
   mimeType: string;
@@ -39,13 +39,13 @@ export class NoteAttachmentsService {
   ) {}
 
   private toMeta(a: NoteAttachment): AttachmentMeta {
-    return {
-      id: a.id,
-      filename: a.filename,
-      mimeType: a.mimeType,
-      size: a.size,
-      createdAt: a.createdAt,
-    };
+    const meta = new AttachmentMeta();
+    meta.id = a.id;
+    meta.filename = a.filename;
+    meta.mimeType = a.mimeType;
+    meta.size = a.size;
+    meta.createdAt = a.createdAt;
+    return meta;
   }
 
   // Confirms the note exists AND belongs to the requesting user. Throws a

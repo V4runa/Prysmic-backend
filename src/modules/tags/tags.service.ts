@@ -9,6 +9,8 @@ import { Note } from '../notes/notes.entity';
 import { Task } from '../tasks/tasks.entity';
 import { Tag } from './tags.entity';
 import { UserService } from '../users/user.service';
+import { User } from '../users/user.entity';
+import { withoutUser } from '../../common/without-user';
 
 /** 409 body when DELETE /tags/:id is refused because notes or tasks still use it. */
 export const TAG_IN_USE_MESSAGE =
@@ -41,10 +43,10 @@ export class TagsService {
     const tag = this.tagsRepository.create({
       name,
       color,
-      user,
+      user: { id: userId } as User,
     });
 
-    return this.tagsRepository.save(tag);
+    return withoutUser(await this.tagsRepository.save(tag));
   }
 
   // Get all tags for a specific user. Usage is two grouped counts (notes, tasks),
@@ -63,7 +65,7 @@ export class TagsService {
       tag.noteCount = counts.noteCount;
       tag.taskCount = counts.taskCount;
     }
-    return tags;
+    return tags.map((tag) => withoutUser(tag));
   }
 
   // Get specific tags by ID, scoped to the owning user
@@ -87,7 +89,7 @@ export class TagsService {
       throw new NotFoundException('Tag not found');
     }
 
-    return tag;
+    return withoutUser(tag);
   }
 
   // Delete a tag (only if it belongs to the user and is unused)
@@ -127,7 +129,7 @@ export class TagsService {
     tag.name = name;
     tag.color = color;
 
-    return this.tagsRepository.save(tag);
+    return withoutUser(await this.tagsRepository.save(tag));
   }
 
   /**

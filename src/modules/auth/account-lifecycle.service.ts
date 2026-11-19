@@ -114,6 +114,9 @@ export class AccountLifecycleService {
       AUTH_TOKEN_PURPOSE.passwordReset,
     );
     if (!userId) throw new BadRequestException(INVALID_LINK);
+    // Email and username are enough for the policy check. The stored hash is
+    // replaced by SQL, which also bumps sessionVersion, so this read does not
+    // select either secret column.
     const user = await this.users.findById(userId);
     if (!user) throw new BadRequestException(INVALID_LINK);
     // Reject before hashing or consuming the link, so the person can try again.
@@ -168,7 +171,7 @@ export class AccountLifecycleService {
     if (!Number.isInteger(id)) {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
-    const user = await this.users.findById(id);
+    const user = await this.users.findByIdForPassword(id);
     if (!user) throw new UnauthorizedException(INVALID_CREDENTIALS);
     this.rateLimiter.assert(
       'password_change',
@@ -214,7 +217,7 @@ export class AccountLifecycleService {
     if (!Number.isInteger(id)) {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
-    const user = await this.users.findById(id);
+    const user = await this.users.findByIdForPassword(id);
     if (!user) throw new UnauthorizedException(INVALID_CREDENTIALS);
     this.rateLimiter.assert(
       'account_delete',

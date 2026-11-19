@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
 import { CreateUserDto, UpdateUserDto } from '../../dtos/user';
@@ -21,7 +21,17 @@ import {
 import { rowsFromQuery } from '../../database/query-rows';
 import { AuthRateLimiter } from '../auth/rate-limit';
 
-export interface PublicUser {
+/** Columns a non-auth read of users may carry. The hash and session version stay out. */
+const PUBLIC_USER_COLUMNS = [
+  'user.id',
+  'user.username',
+  'user.email',
+  'user.emailVerified',
+  'user.createdAt',
+  'user.updatedAt',
+];
+
+export class PublicUser {
   id: number;
   username: string;
   email: string;
@@ -45,14 +55,14 @@ export interface PasswordChangeResult {
 
 /** Fields safe to send to a client. Password and relations stay off the wire. */
 export function toPublicUser(user: User): PublicUser {
-  return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    emailVerified: user.emailVerified === true,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  };
+  const pub = new PublicUser();
+  pub.id = user.id;
+  pub.username = user.username;
+  pub.email = user.email;
+  pub.emailVerified = user.emailVerified === true;
+  pub.createdAt = user.createdAt;
+  pub.updatedAt = user.updatedAt;
+  return pub;
 }
 
 @Injectable()
@@ -85,6 +95,61 @@ export class UserService {
   }
 
   /**
+   * Login lookup. password and sessionVersion are select:false, so this query
+   * opts into both. Callers that only need to know the address is taken use
+   * findByEmail, which leaves the hash in the database.
+   */
+  async findByEmailForAuth(email: string): Promise<User | null> {
+    const normalized = email.trim().toLowerCase();
+    const rows = await this.withSecrets(
+      this.userRepository.createQueryBuilder('user'),
+      ['password', 'sessionVersion'],
+    )
+      .where('LOWER(user.email) = :email', { email: normalized })
+      .orderBy('user.id', 'ASC')
+      .limit(2)
+      .getMany();
+    return rows.length === 1 ? rows[0] : null;
+  }
+
+  /**
+   * Login lookup by username. Same secret columns as findByEmailForAuth.
+   */
+  async findByUsernameForAuth(username: string): Promise<User | null> {
+    return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
+      'password',
+      'sessionVersion',
+    ])
+      .where('user.username = :username', { username })
+      .getOne();
+  }
+
+  /**
+   * Access-token and refresh checks. Loads sessionVersion and leaves the
+   * password hash unselected.
+   */
+  async findByIdForSession(id: number): Promise<User | null> {
+    return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
+      'sessionVersion',
+    ])
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
+  /**
+   * Password confirmation: signed-in change, email change, and account
+   * deletion. Loads the hash and the session version.
+   */
+  async findByIdForPassword(id: number): Promise<User | null> {
+    return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
+      'password',
+      'sessionVersion',
+    ])
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
+  /**
    * Case-insensitive email match, capped at two rows. More than one means
    * legacy case-variants share an address; callers must not guess.
    */
@@ -94,20 +159,23 @@ export class UserService {
     if (typeof this.userRepository.createQueryBuilder === 'function') {
       return this.userRepository
         .createQueryBuilder('user')
+        .select(PUBLIC_USER_COLUMNS)
         .where('LOWER(user.email) = :email', { email: normalized })
         .orderBy('user.id', 'ASC')
         .limit(2)
         .getMany();
     }
+    // Repositories without a query builder (older specs) still return plain
+    // objects. select:false does not apply to those, so copy only public columns.
     const exact = await this.userRepository.findOne({
       where: { email: normalized },
     });
-    if (exact) return [exact];
+    if (exact) return [withoutSecrets(exact)];
     if (trimmed !== normalized) {
       const typed = await this.userRepository.findOne({
         where: { email: trimmed },
       });
-      if (typed) return [typed];
+      if (typed) return [withoutSecrets(typed)];
     }
     return [];
   }
@@ -135,6 +203,7 @@ export class UserService {
     }
     const rows = await this.userRepository
       .createQueryBuilder('user')
+      .select(PUBLIC_USER_COLUMNS)
       .where('LOWER(user.username) = :username', {
         username: email.trim().toLowerCase(),
       })
@@ -198,15 +267,19 @@ export class UserService {
     }
 
     const emailChanged = nextEmail !== undefined;
+    const patch: Partial<User> = {};
     if (nextEmail) {
-      user.email = nextEmail;
-      user.emailVerified = false;
+      patch.email = nextEmail;
+      patch.emailVerified = false;
     }
     if (nextUsername) {
-      user.username = nextUsername;
+      patch.username = nextUsername;
     }
 
-    const saved = await this.userRepository.save(user);
+    // update() writes only the changed profile columns. save() would also
+    // leave the hash alone: TypeORM skips undefined properties, so an
+    // unselected password is not written back as null.
+    const saved = await this.applyProfilePatch(user, patch);
     if (emailChanged) {
       await this.revokeVerificationTokens(saved.id);
     }
@@ -216,6 +289,8 @@ export class UserService {
   /**
    * Atomic password replacement for a signed-in change. Does not touch
    * emailVerified: a reset link proves the mailbox, this path does not.
+   * RETURNING lists the columns the new access token needs. The password
+   * hash is not among them, and this object is not an HTTP response.
    */
   async changePasswordHash(
     userId: number,
@@ -277,11 +352,30 @@ export class UserService {
     return updated.length > 0;
   }
 
+  private withSecrets(
+    qb: SelectQueryBuilder<User>,
+    secrets: Array<'password' | 'sessionVersion'>,
+  ): SelectQueryBuilder<User> {
+    for (const secret of secrets) {
+      qb.addSelect(`user.${secret}`);
+    }
+    return qb;
+  }
+
+  /**
+   * Confirms the current password before an email change. The row from
+   * findById does not include the hash.
+   */
   private async assertCurrentPassword(
     user: User,
     currentPassword: string | undefined,
     ip: string,
   ): Promise<void> {
+    const withPassword = await this.findByIdForPassword(user.id);
+    if (!withPassword) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+    user = withPassword;
     if (!currentPassword) {
       throw new BadRequestException(EMAIL_CHANGE_PASSWORD_REQUIRED);
     }
@@ -294,6 +388,24 @@ export class UserService {
     if (!matches) throw new UnauthorizedException(INVALID_CREDENTIALS);
   }
 
+  private async applyProfilePatch(
+    user: User,
+    patch: Partial<User>,
+  ): Promise<User> {
+    if (Object.keys(patch).length === 0) return user;
+    if (
+      typeof this.userRepository.createQueryBuilder === 'function' &&
+      typeof this.userRepository.update === 'function'
+    ) {
+      await this.userRepository.update(user.id, patch);
+      const saved = await this.findById(user.id);
+      if (!saved) throw new NotFoundException('User not found');
+      return saved;
+    }
+    Object.assign(user, patch);
+    return this.userRepository.save(user);
+  }
+
   private async revokeVerificationTokens(userId: number): Promise<void> {
     if (typeof this.authTokens.manager?.query !== 'function') return;
     await this.authTokens.manager.query(
@@ -303,4 +415,16 @@ export class UserService {
       [userId, AUTH_TOKEN_PURPOSE.emailVerification],
     );
   }
+}
+
+/** Drops secret columns from a plain row. select:false does not apply there. */
+function withoutSecrets(user: User): User {
+  const prototype = Object.getPrototypeOf(user) as object | null;
+  const copy = Object.assign(
+    prototype ? Object.create(prototype) : {},
+    user,
+  ) as Partial<User>;
+  delete copy.password;
+  delete copy.sessionVersion;
+  return copy as User;
 }
