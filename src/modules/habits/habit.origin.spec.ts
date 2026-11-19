@@ -11,6 +11,7 @@ import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { Note } from '../notes/notes.entity';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
+import { userQueryBuilder } from '../../testing/user-query';
 import { HabitCheck } from './habit-check.entity';
 import { HabitController } from './habit.controller';
 import { Habit } from './habit.entity';
@@ -220,6 +221,9 @@ function createMemory() {
       const id = asNumber(options?.where?.id);
       const found = users.find((user) => user.id === id);
       return found ? { ...found } : null;
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
   };
 

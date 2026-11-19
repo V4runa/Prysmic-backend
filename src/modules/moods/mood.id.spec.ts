@@ -10,6 +10,7 @@ import { AuthRateLimiter } from '../auth/rate-limit';
 import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
+import { userQueryBuilder } from '../../testing/user-query';
 import { MoodOptionController } from './mood-option.controller';
 import { MoodOption } from './mood-option.entity';
 import { MoodOptionService } from './mood-option.service';
@@ -134,6 +135,9 @@ function createMemory() {
       const id = asNumber(options?.where?.id);
       const found = users.find((user) => user.id === id);
       return found ? { ...found } : null;
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
   };
 

@@ -33,6 +33,7 @@ import { AuthTokenService } from './tokens/auth-token.service';
 import { RefreshSessionService } from './sessions/refresh-session.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { User } from '../users/user.entity';
+import { userQueryBuilder } from '../../testing/user-query';
 import { UserController } from '../users/user.controller';
 import { UserService } from '../users/user.service';
 
@@ -121,6 +122,9 @@ function createMemory() {
     }): Promise<StoredUser | null> {
       const rows = await repo.find(options);
       return rows[0] ?? null;
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
     manager: {
       async query(sql: string, params: unknown[] = []): Promise<unknown> {

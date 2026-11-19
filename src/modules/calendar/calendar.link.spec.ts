@@ -15,6 +15,7 @@ import { Note } from '../notes/notes.entity';
 import { Task } from '../tasks/tasks.entity';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
+import { userQueryBuilder } from '../../testing/user-query';
 import { CalendarController } from './calendar.controller';
 import { CalendarEvent } from './calendar-event.entity';
 import { CalendarService } from './calendar.service';
@@ -180,6 +181,9 @@ function createMemory() {
       const id = asNumber(options?.where?.id);
       const found = users.find((user) => user.id === id);
       return found ? { ...found } : null;
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
   };
 

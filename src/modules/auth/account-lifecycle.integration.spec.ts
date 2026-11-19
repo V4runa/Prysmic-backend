@@ -912,6 +912,91 @@ describe('account lifecycle against disposable Postgres', () => {
     expect(mailbox().outbox).toHaveLength(0);
     expect(JSON.stringify(same.body)).not.toContain('steady-passphrase');
   });
+
+  it('loads secrets only for login, refresh, password change, email change, and delete', async () => {
+    const username = 'column-keeper';
+    const email = 'column-keeper@example.test';
+    const password = 'column-journal-passphrase';
+    const replacement = 'column-replacement-passphrase';
+    const signup = await request(server()).post('/auth/signup').send({
+      username,
+      email,
+      password,
+    });
+    expect(signup.status).toBe(201);
+    expect(signup.body.password).toBeUndefined();
+    expect(signup.body.sessionVersion).toBeUndefined();
+
+    const byEmail = await request(server())
+      .post('/auth/login')
+      .send({ identifier: email, password });
+    expect(byEmail.status).toBe(201);
+    expect(byEmail.body.password).toBeUndefined();
+    expect(byEmail.body.sessionVersion).toBeUndefined();
+
+    const byUsername = await request(server())
+      .post('/auth/login')
+      .send({ identifier: username, password });
+    expect(byUsername.status).toBe(201);
+    const usernameToken = byUsername.body.access_token as string;
+    expect(usernameToken).toEqual(expect.any(String));
+
+    const refreshed = await request(server())
+      .post('/auth/refresh')
+      .set('Cookie', refreshPair(byUsername));
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.body.password).toBeUndefined();
+    expect(refreshed.body.sessionVersion).toBeUndefined();
+    const access = refreshed.body.access_token as string;
+
+    const profile = await request(server()).get('/users').set(auth(access));
+    expect(profile.status).toBe(200);
+    expect(profile.body[0].email).toBe(email);
+    expect(profile.body[0].username).toBe(username);
+    expect(profile.body[0].password).toBeUndefined();
+    expect(profile.body[0].sessionVersion).toBeUndefined();
+    const userId = profile.body[0].id as number;
+
+    const changed = await request(server())
+      .post('/auth/password/change')
+      .set(auth(access))
+      .send({ currentPassword: password, newPassword: replacement });
+    expect(changed.status).toBe(200);
+    expect(changed.body.password).toBeUndefined();
+    expect(changed.body.sessionVersion).toBeUndefined();
+    const stale = await request(server()).get('/users').set(auth(access));
+    expect(stale.status).toBe(401);
+    const current = changed.body.access_token as string;
+    const still = await request(server()).get('/users').set(auth(current));
+    expect(still.status).toBe(200);
+
+    const moved = await request(server())
+      .put(`/users/${userId}`)
+      .set(auth(current))
+      .send({
+        email: 'column-moved@example.test',
+        currentPassword: replacement,
+      });
+    expect(moved.status).toBe(200);
+    expect(moved.body.email).toBe('column-moved@example.test');
+    expect(moved.body.password).toBeUndefined();
+    expect(moved.body.sessionVersion).toBeUndefined();
+
+    const removed = await request(server())
+      .delete('/users/me')
+      .set(auth(current))
+      .send({ password: replacement });
+    expect(removed.status).toBe(204);
+    const gone = await request(server())
+      .post('/auth/login')
+      .send({ identifier: username, password: replacement });
+    expect(gone.status).toBe(401);
+    const stored = await admin.query(
+      `SELECT "id" FROM "users" WHERE "id" = $1`,
+      [userId],
+    );
+    expect(stored).toHaveLength(0);
+  });
 });
 
 function migrationName(migration: MigrationInterface): string {
@@ -935,6 +1020,14 @@ function remember(application: INestApplication): void {
 
 function auth(token: string): { Authorization: string } {
   return { Authorization: `Bearer ${token}` };
+}
+
+function refreshPair(res: Response): string {
+  const header = res.headers['set-cookie'];
+  const lines = Array.isArray(header) ? header : header ? [header] : [];
+  const line = lines.find((item) => item.startsWith('prysmic_refresh='));
+  if (!line) throw new Error('missing refresh cookie');
+  return line.split(';')[0] ?? '';
 }
 
 function mailbox(): ConsoleEmailProvider {

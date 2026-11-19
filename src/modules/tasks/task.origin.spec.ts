@@ -13,6 +13,7 @@ import { Tag } from '../tags/tags.entity';
 import { TagsService } from '../tags/tags.service';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
+import { userQueryBuilder } from '../../testing/user-query';
 import { Task } from './tasks.entity';
 import { TaskController } from './tasks.controller';
 import { TaskService } from './tasks.service';
@@ -230,6 +231,9 @@ function createMemory() {
     },
     async findOneBy(where?: { id?: unknown }): Promise<StoredUser | null> {
       return userRepo.findOne({ where });
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
   };
 

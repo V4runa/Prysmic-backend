@@ -21,6 +21,16 @@ import {
 import { rowsFromQuery } from '../../database/query-rows';
 import { AuthRateLimiter } from '../auth/rate-limit';
 
+/** Columns a non-auth read of users may carry. The hash and session version stay out. */
+const PUBLIC_USER_COLUMNS = [
+  'user.id',
+  'user.username',
+  'user.email',
+  'user.emailVerified',
+  'user.createdAt',
+  'user.updatedAt',
+];
+
 export class PublicUser {
   id: number;
   username: string;
@@ -91,7 +101,6 @@ export class UserService {
    */
   async findByEmailForAuth(email: string): Promise<User | null> {
     const normalized = email.trim().toLowerCase();
-    if (!this.canQuery()) return this.findByEmail(email);
     const rows = await this.withSecrets(
       this.userRepository.createQueryBuilder('user'),
       ['password', 'sessionVersion'],
@@ -107,7 +116,6 @@ export class UserService {
    * Login lookup by username. Same secret columns as findByEmailForAuth.
    */
   async findByUsernameForAuth(username: string): Promise<User | null> {
-    if (!this.canQuery()) return this.findByUsername(username);
     return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
       'password',
       'sessionVersion',
@@ -121,7 +129,6 @@ export class UserService {
    * password hash unselected.
    */
   async findByIdForSession(id: number): Promise<User | null> {
-    if (!this.canQuery()) return this.findById(id);
     return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
       'sessionVersion',
     ])
@@ -134,7 +141,6 @@ export class UserService {
    * deletion. Loads the hash and the session version.
    */
   async findByIdForPassword(id: number): Promise<User | null> {
-    if (!this.canQuery()) return this.findById(id);
     return this.withSecrets(this.userRepository.createQueryBuilder('user'), [
       'password',
       'sessionVersion',
@@ -153,20 +159,23 @@ export class UserService {
     if (typeof this.userRepository.createQueryBuilder === 'function') {
       return this.userRepository
         .createQueryBuilder('user')
+        .select(PUBLIC_USER_COLUMNS)
         .where('LOWER(user.email) = :email', { email: normalized })
         .orderBy('user.id', 'ASC')
         .limit(2)
         .getMany();
     }
+    // Repositories without a query builder (older specs) still return plain
+    // objects. select:false does not apply to those, so copy only public columns.
     const exact = await this.userRepository.findOne({
       where: { email: normalized },
     });
-    if (exact) return [exact];
+    if (exact) return [withoutSecrets(exact)];
     if (trimmed !== normalized) {
       const typed = await this.userRepository.findOne({
         where: { email: trimmed },
       });
-      if (typed) return [typed];
+      if (typed) return [withoutSecrets(typed)];
     }
     return [];
   }
@@ -194,6 +203,7 @@ export class UserService {
     }
     const rows = await this.userRepository
       .createQueryBuilder('user')
+      .select(PUBLIC_USER_COLUMNS)
       .where('LOWER(user.username) = :username', {
         username: email.trim().toLowerCase(),
       })
@@ -266,8 +276,9 @@ export class UserService {
       patch.username = nextUsername;
     }
 
-    // save() of a row loaded without select:false columns can write those
-    // columns back as null. update() sets only the profile fields.
+    // update() writes only the changed profile columns. save() would also
+    // leave the hash alone: TypeORM skips undefined properties, so an
+    // unselected password is not written back as null.
     const saved = await this.applyProfilePatch(user, patch);
     if (emailChanged) {
       await this.revokeVerificationTokens(saved.id);
@@ -278,6 +289,8 @@ export class UserService {
   /**
    * Atomic password replacement for a signed-in change. Does not touch
    * emailVerified: a reset link proves the mailbox, this path does not.
+   * RETURNING lists the columns the new access token needs. The password
+   * hash is not among them, and this object is not an HTTP response.
    */
   async changePasswordHash(
     userId: number,
@@ -339,10 +352,6 @@ export class UserService {
     return updated.length > 0;
   }
 
-  private canQuery(): boolean {
-    return typeof this.userRepository.createQueryBuilder === 'function';
-  }
-
   private withSecrets(
     qb: SelectQueryBuilder<User>,
     secrets: Array<'password' | 'sessionVersion'>,
@@ -384,7 +393,10 @@ export class UserService {
     patch: Partial<User>,
   ): Promise<User> {
     if (Object.keys(patch).length === 0) return user;
-    if (this.canQuery() && typeof this.userRepository.update === 'function') {
+    if (
+      typeof this.userRepository.createQueryBuilder === 'function' &&
+      typeof this.userRepository.update === 'function'
+    ) {
       await this.userRepository.update(user.id, patch);
       const saved = await this.findById(user.id);
       if (!saved) throw new NotFoundException('User not found');
@@ -403,4 +415,16 @@ export class UserService {
       [userId, AUTH_TOKEN_PURPOSE.emailVerification],
     );
   }
+}
+
+/** Drops secret columns from a plain row. select:false does not apply there. */
+function withoutSecrets(user: User): User {
+  const prototype = Object.getPrototypeOf(user) as object | null;
+  const copy = Object.assign(
+    prototype ? Object.create(prototype) : {},
+    user,
+  ) as Partial<User>;
+  delete copy.password;
+  delete copy.sessionVersion;
+  return copy as User;
 }

@@ -18,6 +18,7 @@ import { AuthToken } from '../auth/tokens/auth-token.entity';
 import { User } from './user.entity';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
+import { userQueryBuilder } from '../../testing/user-query';
 
 /* In-memory user rows and supertest bodies are loose by design.
    The assertions are the ownership and serialization contract. */
@@ -104,6 +105,9 @@ function createMemory() {
     }): Promise<StoredUser | null> {
       const rows = await repo.find(options);
       return rows[0] ?? null;
+    },
+    createQueryBuilder() {
+      return userQueryBuilder(users);
     },
     async remove(user: { id?: unknown }): Promise<void> {
       const id = asNumber(user.id);
