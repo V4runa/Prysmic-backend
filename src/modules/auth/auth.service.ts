@@ -100,9 +100,9 @@ export class AuthService {
       password: hashedPassword,
     });
 
-    // Seed starter notes, contracts, and tasks.
-    // Best-effort: seeding never blocks issuing the access token.
-    await this.onboardingService.seedSampleData(user.id);
+    // Default mood palette only. Sample notes, tags, contracts, and tasks
+    // are not created. Seeding never blocks issuing the access token.
+    await this.onboardingService.seedDefaultMoods(user.id);
 
     // The letter goes out after the response. A missing mail config is logged
     // inside the lifecycle service and does not fail signup.

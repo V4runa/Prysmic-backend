@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -18,7 +19,11 @@ import {
 } from '@nestjs/common';
 import { ParseEntityIdPipe } from '../../common/parse-entity-id.pipe';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { DeleteAccountDto, UpdateUserDto } from '../../dtos/user';
+import {
+  DeleteAccountDto,
+  UpdateTourSeenDto,
+  UpdateUserDto,
+} from '../../dtos/user';
 import { UserService, toPublicUser, PublicUser } from './user.service';
 import { AccountLifecycleService } from '../auth/account-lifecycle.service';
 import { RateLimitFilter } from '../auth/rate-limit.filter';
@@ -98,6 +103,22 @@ export class UserController {
     );
     if (emailChanged) this.lifecycle.sendVerificationEmail(user);
     return toPublicUser(user);
+  }
+
+  /**
+   * Marks the first-run tour seen. `{ seen: false }` clears `tourSeenAt`.
+   * An empty body marks it seen. Returns the stored value.
+   */
+  @Patch('me/tour')
+  async setTourSeen(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpdateTourSeenDto,
+  ): Promise<{ tourSeenAt: Date | null }> {
+    const tourSeenAt = await this.userService.setTourSeenAt(
+      Number(req.user.userId),
+      dto?.seen !== false,
+    );
+    return { tourSeenAt };
   }
 
   @Delete('me')

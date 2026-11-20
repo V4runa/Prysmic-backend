@@ -44,6 +44,13 @@ export class User {
   })
   updatedAt: Date;
 
+  /**
+   * When this account finished or dismissed the first-run tour.
+   * Null means it has not been seen. Existing accounts are backfilled.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  tourSeenAt: Date | null;
+
   @OneToMany(() => Note, (note) => note.user)
   notes: Note[];
 
