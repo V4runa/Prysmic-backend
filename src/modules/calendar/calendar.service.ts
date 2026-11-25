@@ -60,6 +60,27 @@ function addMonths(d: string, n: number): string {
     .slice(0, 10);
 }
 
+/** UTC date, or the calendar day of `instant` in `timeZone` when that name is valid. */
+function dayKeyInZone(instant: Date, timeZone?: string): string {
+  const utc = instant.toISOString().slice(0, 10);
+  if (!timeZone) return utc;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(instant);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    if (!year || !month || !day) return utc;
+    return `${year}-${month}-${day}`;
+  } catch {
+    return utc;
+  }
+}
+
 function daysBetween(a: string, b: string): number {
   return Math.round((parseDay(b) - parseDay(a)) / DAY_MS);
 }
@@ -209,6 +230,7 @@ export class CalendarService {
     userId: number,
     fromRaw?: string,
     toRaw?: string,
+    timeZone?: string,
   ): Promise<CalendarFeed> {
     const { from, to } = this.resolveRange(fromRaw, toRaw);
 
@@ -222,7 +244,7 @@ export class CalendarService {
       await Promise.all([
         this.buildEventItems(userId, from, to),
         this.buildTaskItems(userId, tsFrom, tsTo),
-        this.buildHabitItems(userId, from, to),
+        this.buildHabitItems(userId, from, to, timeZone),
         this.buildMoodItems(userId, from, to),
         this.buildNoteItems(userId, tsFrom, tsTo),
       ]);
@@ -401,6 +423,7 @@ export class CalendarService {
     userId: number,
     from: string,
     to: string,
+    timeZone?: string,
   ): Promise<CalendarHabitItem[]> {
     const habits = await this.habitRepo.find({
       where: { userId, isActive: true },
@@ -428,7 +451,7 @@ export class CalendarService {
       if (habit.frequency === HabitFrequency.DAILY) {
         // Daily habits render an expected occurrence every day (from creation
         // onward), turning the grid into a habit tracker.
-        const createdDay = habit.createdAt.toISOString().slice(0, 10);
+        const createdDay = dayKeyInZone(habit.createdAt, timeZone);
         const start = createdDay > from ? createdDay : from;
         for (const day of windowDays) {
           if (day < start) continue;
