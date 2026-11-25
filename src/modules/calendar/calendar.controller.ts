@@ -25,7 +25,12 @@ export class CalendarController {
   /** Aggregated feed across events, tasks, habits, moods and notes. */
   @Get()
   getFeed(@Request() req, @Query() query: QueryCalendarDto) {
-    return this.calendarService.getFeed(req.user.userId, query.from, query.to);
+    return this.calendarService.getFeed(
+      req.user.userId,
+      query.from,
+      query.to,
+      query.tz,
+    );
   }
 
   @Post('events')
